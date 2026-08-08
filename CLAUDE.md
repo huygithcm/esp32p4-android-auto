@@ -1,379 +1,238 @@
-# Android Auto Wireless — ESP32-P4 Project
+# CLAUDE.md
 
-## Цель
-
-Реализовать беспроводной Android Auto head unit на базе ESP32-P4 с дисплеем 800×480.
-
-Проект поддерживает **два режима подключения** — выбирается через `#define CONNECTION_MODE` в `main/config.h`:
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ---
 
-## Режимы подключения
+## Đây là dự án gì
 
-### MODE A — С ESP32-WROOM (рекомендуется)
-**Работает как настоящая магнитола. Без доп. приложений. Без настроек на телефоне.**
+Firmware ESP32-P4 cho một thiết bị **hai vai trò** trên cùng một màn cảm ứng 800×480:
 
-Телефон видит head unit по Classic Bluetooth → автоматически запускает AA Wireless → переходит на WiFi.
-Внешний ESP32-WROOM-32 (~$3) подключается по UART и занимается только BT handshake.
+1. **Chính — dashboard VESC**: telemetry xe điện qua CAN/TWAI (pin, tốc độ, nhiệt
+   độ, odometer, trip), menu cấu hình VESC ngay trên thiết bị, cầu BLE cho VESC Tool.
+2. **Bonus — Android Auto Wireless**: điện thoại chiếu màn hình qua Wi-Fi
+   (H.264 software decode), touch được forward ngược về máy.
 
-```c
-#define CONNECTION_MODE MODE_BT_CLASSIC
-```
+Kèm theo: app Flutter companion (`flutter-application/`), script LispBM chạy
+**trên VESC** (`lisp/main.lisp`), và hai firmware phụ được nhúng sẵn trong image P4.
 
-### MODE B — Без ESP32-WROOM (только C6 на плате)
-**Требует Wireless Helper APK на телефоне (одноразовая установка).**
+> **Trạng thái thực tế, đừng tin phần comment cũ trong code:**
+> `CONNECTION_MODE` mặc định là `MODE_WIRELESS_HELPER` (Mode B).
+> **`MODE_BT_CLASSIC` (Mode A) CHƯA implement** — `main/main.c:606` là `#error`.
+> Thực tế đang chạy: Mode B + **module BT agent ngoài** (ESP32-WROOM/D1 Mini) lo
+> phần Classic BT handshake và đẩy Wi-Fi creds sang P4 qua UART1.
+> Cổng AA là **5288** (`AA_TCP_PORT`), mDNS service là **`_aawireless._tcp`**
+> (Wireless Helper APK hardcode port, chỉ lấy IP từ mDNS).
 
-Телефон находит head unit по mDNS через Wireless Helper → запускает AA Wireless.
-Никакого дополнительного железа. Wireless Helper — open source, бесплатный:
-https://github.com/andreknieriem/wireless-helper
-
-```c
-#define CONNECTION_MODE MODE_WIRELESS_HELPER
-```
-
-| | Mode A (BT Classic) | Mode B (Wireless Helper) |
-|---|---|---|
-| Доп. железо | ESP32-WROOM ~$3 | Нет |
-| Доп. приложение | Нет | Wireless Helper APK |
-| Опыт пользователя | Как настоящая магнитола | Поставить APK один раз |
-| Сложность реализации | Выше | Ниже |
+Tài liệu kiến trúc chi tiết (sơ đồ thư mục đầy đủ, luồng boot từng bước, luồng
+AA / VESC / BLE): **`docs/ARCHITECTURE.md`**. File này chỉ giữ phần cần cho việc
+sửa code hằng ngày.
 
 ---
 
-## Железо
+## Lệnh thường dùng
 
-Целевая плата: **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**.
+Luôn `. "$IDF_PATH/export.sh"` trước. ESP-IDF **v5.5+**, target `esp32p4`
+(thêm `esp32` nếu build firmware BT agent).
 
-- Магазин: https://www.waveshare.com/esp32-p4-wifi6-touch-lcd-4.3.htm
-- Wiki + примеры: https://github.com/waveshareteam/ESP32-P4-WIFI6-Touch-LCD-4.3
-- Локальная копия примеров (для оффлайн-сравнения): `research/_sources/waveshare_p4_4_3/`
-  - BSP, который мы взяли в `components/esp32_p4_wifi6_touch_lcd_4_3/`,
-    скопирован из `examples/esp-idf/07_Displaycolorbar/components/`
-  - Полезные демо: `08_lvgl_demo_v9` (LVGL UI), `09_video_lcd_display`,
-    `10_mp4_player`, `11_esp_brookesia_phone`
-
-| Компонент | Чип | Роль | Mode A | Mode B |
-|---|---|---|---|---|
-| Основная плата | ESP32-P4 | Главный процессор | ✅ | ✅ |
-| На плате | ESP32-C6 | WiFi транспорт | ✅ | ✅ |
-| Дисплей | 800×480 ST7701 MIPI-DSI + GT911 touch | Вывод видео | ✅ | ✅ |
-| Внешний модуль | ESP32-WROOM-32 | Classic BT handshake | ✅ | ❌ |
-
-### Подключение ESP32-WROOM (только Mode A)
-
-```
-ESP32-WROOM TX  →  ESP32-P4 GPIO (UART RX)
-ESP32-WROOM RX  →  ESP32-P4 GPIO (UART TX)
-ESP32-WROOM GND →  GND
-ESP32-WROOM 3V3 →  3V3
-```
-
----
-
-## Архитектура
-
-### Mode A — Classic BT
-
-```
-[Android телефон]
-      |
-      | 1. Classic BT (HFP handshake + WiFi credentials)
-      |
-[ESP32-WROOM] ──UART──> [ESP32-P4]
-                              |
-                    2. [ESP32-C6] (WiFi 6)
-                              |
-                    3. TCP + TLS (AA Wireless protocol)
-                              |
-                    4. H.264 decode → дисплей 800×480
-```
-
-### Mode B — Wireless Helper
-
-```
-[Android телефон]
-      |
-      | 1. Wireless Helper APK находит head unit по mDNS
-      |
-      | 2. TCP + TLS (AA Wireless protocol)
-      |
-                    [ESP32-C6] (WiFi 6)
-                              |
-                    [ESP32-P4]
-                              |
-                    H.264 decode → дисплей 800×480
-```
-
----
-
-## Стек технологий
-
-- **Фреймворк:** ESP-IDF (последняя стабильная)
-- **H.264 декодер:** компонент `esp_h264` от Espressif
-- **TLS:** mbedTLS (встроен в ESP-IDF)
-- **Protobuf:** nanopb (встроен в ESP-IDF)
-- **mDNS:** компонент `mdns` (встроен в ESP-IDF)
-- **BT стек:** Classic BT + HFP на ESP32-WROOM через esp-idf bluetooth classic
-- **UI:** LVGL поверх декодированных фреймов
-
----
-
-## Компоненты для реализации
-
-### config.h — выбор режима
-
-```c
-// main/config.h
-#define MODE_BT_CLASSIC       1
-#define MODE_WIRELESS_HELPER  2
-
-// Выбрать один:
-#define CONNECTION_MODE MODE_BT_CLASSIC
-// #define CONNECTION_MODE MODE_WIRELESS_HELPER
-```
-
----
-
-### 1. Прошивка ESP32-WROOM — BT агент (только Mode A)
-
-Задача: принять BT соединение от телефона, выполнить AA handshake, передать WiFi параметры по UART на P4.
-
-```
-Файлы:
-  bt_agent/
-    main/
-      bt_hfp.c       — HFP профиль, обнаружение телефона
-      wifi_bridge.c  — передача WiFi credentials по UART
-      main.c
-    CMakeLists.txt
-    sdkconfig.defaults
-```
-
-Используемые API ESP-IDF:
-- `esp_bt_controller_init()`
-- `esp_bluedroid_init()`
-- `esp_hf_client_register_callback()`
-- UART: `uart_driver_install()`, `uart_write_bytes()`
-
----
-
-### 2. Прошивка ESP32-P4 — главный процессор
-
-#### 2a. WiFi менеджер (через ESP32-C6, оба режима)
-
-```c
-// ESP-Hosted SDIO транспорт к C6
-// Mode A: получить WiFi credentials от WROOM по UART, подключиться к сети телефона
-// Mode B: подключиться к известной WiFi сети (или поднять AP)
-// Поднять TCP сервер на порту 5277 (стандарт AA Wireless)
-```
-
-#### 2b. mDNS анонс (оба режима)
-
-```c
-mdns_init();
-mdns_hostname_set("android-auto");
-mdns_service_add(NULL, "_androidauto", "_tcp", 5277, NULL, 0);
-// Mode A: телефон находит сам после BT handshake
-// Mode B: Wireless Helper находит по этому анонсу
-```
-
-#### 2c. Инициализация подключения (зависит от режима)
-
-```c
-#if CONNECTION_MODE == MODE_BT_CLASSIC
-    // Ждать UART сообщение от ESP32-WROOM с WiFi credentials
-    // Подключиться к сети телефона
-    // Запустить mDNS + TCP сервер
-#elif CONNECTION_MODE == MODE_WIRELESS_HELPER
-    // Подключиться к WiFi (сохранённые credentials или WiFiManager)
-    // Запустить mDNS + TCP сервер
-    // Wireless Helper APK на телефоне найдёт по mDNS и запустит AA
-#endif
-```
-
-#### 2d. AA Protocol stack (порт aasdk на ESP-IDF, оба режима)
-
-Заменить Linux-зависимости:
-
-| Оригинал (aasdk) | ESP-IDF замена |
-|---|---|
-| Boost.Asio | FreeRTOS tasks + lwIP sockets |
-| Boost.Log | ESP_LOG |
-| libusb | не нужен (WiFi) |
-| OpenSSL | mbedTLS |
-| protobuf | nanopb |
-
-Структура протокола:
-```
-aa_protocol/
-  transport/    — TCP соединение, frame parsing
-  ssl/          — TLS handshake через mbedTLS
-  channel/      — Video, Audio, Input, Sensor каналы
-  messenger/    — protobuf encode/decode через nanopb
-```
-
-#### 2d. H.264 декодер
-
-```c
-// Использовать esp_h264 компонент
-// Входной буфер: H.264 NAL units из AA Video канала
-// Выходной буфер: RGB565 фреймы для дисплея
-// Целевое разрешение: 640×480 @ 31fps (задокументировано Espressif)
-// Апскейл до 800×480 через Pixel Processing Accelerator ESP32-P4
-```
-
-#### 2e. Вывод на дисплей
-
-```c
-// RGB/SPI интерфейс к дисплею 800×480
-// Double buffering через DMA
-// LVGL как UI слой поверх AA видео
-// Touch события → AA InputChannel → телефон
-```
-
----
-
-## Порядок реализации
-
-### Mode A (с ESP32-WROOM)
-
-```
-Этап 1  ESP32-WROOM BT агент
-        └── HFP подключение к телефону
-        └── Передача WiFi credentials по UART
-        └── Тест: телефон видит head unit по BT
-
-Этап 2  ESP32-P4 WiFi + TCP сервер
-        └── Получение credentials от WROOM по UART
-        └── Подключение к сети телефона
-        └── TCP сервер на порту 5277
-        └── mDNS анонс
-
-Этап 3–7  (общие с Mode B, см. ниже)
-```
-
-### Mode B (Wireless Helper, без доп. железа)
-
-```
-Этап 1  ESP32-P4 WiFi + TCP сервер
-        └── Подключение к WiFi (сохранённые credentials)
-        └── TCP сервер на порту 5277
-        └── mDNS анонс _androidauto._tcp
-        └── Тест: Wireless Helper на телефоне находит устройство
-
-Этап 2–6  (общие, см. ниже)
-```
-
-### Общие этапы (оба режима)
-
-```
-Этап TLS  TLS handshake
-          └── mbedTLS сервер
-          └── AA SSL сертификаты (самоподписанные)
-          └── Тест: телефон завершает TLS
-
-Этап AA   AA протокол — базовые каналы
-          └── nanopb .proto файлы из aasdk
-          └── Version negotiation
-          └── Service Discovery
-          └── Тест: AA запускается на телефоне
-
-Этап VID  Video канал
-          └── H.264 через esp_h264
-          └── Вывод на дисплей
-          └── Тест: видео идёт на экран
-
-Этап IN   Input канал
-          └── Touch → AA TouchEvent protobuf
-          └── Тест: тач работает в AA интерфейсе
-
-Этап AUD  Audio канал
-          └── AAC декодинг
-          └── I2S вывод на динамик
-```
-
----
-
-## Ключевые репозитории для изучения
-
-- https://github.com/f1xpl/aasdk — оригинальный AA протокол стек (Linux)
-- https://github.com/f1xpl/openauto — AA head unit на RPi (Linux)
-- https://github.com/andreknieriem/headunit-revived — WiFi/wireless режимы
-- https://github.com/espressif/esp-idf/tree/master/examples/bluetooth/classic_bt — BT Classic примеры
-- https://github.com/espressif/esp-h264 — H.264 декодер для P4
-
----
-
-## Важные нюансы
-
-1. **BT Classic только на ESP32-WROOM** — ESP32-C6 и ESP32-P4 Classic BT не имеют
-2. **H.264 декодинг SW** — esp_h264 работает программно на P4, аппаратного декодера нет, но 640×480@31fps достаточно для AA
-3. **AA Wireless версия 16.4+** — есть баги с некоторыми режимами подключения, тестировать на актуальном телефоне
-4. **nanopb .proto файлы** — брать из aasdk репозитория, регенерировать под nanopb
-5. **ESP-Hosted** — ESP32-P4 общается с ESP32-C6 по SDIO, не по UART
-
----
-
-## Команды для старта
+### Build & flash firmware P4
 
 ```bash
-# Установить ESP-IDF
-git clone --recursive https://github.com/espressif/esp-idf.git
-cd esp-idf && ./install.sh esp32,esp32p4
-. ./export.sh
-
-# Сборка и прошивка
-idf.py build
+idf.py build                                       # = board Waveshare, vào build/
 idf.py -p <PORT> flash monitor
+
+scripts/build_board.sh                             # build TẤT CẢ board
+scripts/build_board.sh waveshare build             # → build_waveshare/
+scripts/build_board.sh jc4880 -p <PORT> flash monitor   # → build_jc4880/
+scripts/build_board.sh waveshare menuconfig        # đổi Kconfig cho 1 board
+scripts/build_board.sh jc4880 size                 # báo cáo size — xem §"ngân sách flash"
 ```
 
-## Поддержка нескольких девайсов (мульти-борд)
+`build_board.sh` chạy trong build dir riêng + overlay
+`SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.<board>"`.
+Không dùng `idf.py` trần cho jc4880 — sẽ build nhầm sdkconfig của Waveshare.
 
-Прошивка собирается под несколько плат ESP32-P4. Обычный `idf.py build`
-собирает под **Waveshare 4.3"** (дефолт, обратная совместимость). Для выбора
-платы есть `scripts/build_board.sh <board> <аргументы idf.py>`:
+### OTA (sau lần flash USB đầu tiên)
 
 ```bash
-scripts/build_board.sh                                   # собрать ВСЕ платы (или `all`)
-scripts/build_board.sh waveshare flash monitor
-scripts/build_board.sh jc4880 -p <PORT> flash monitor   # Guition JC4880P443C, 16 МБ флеш
+scripts/ota_push.sh                                # build/…bin → SoftAP 192.168.4.1/ota
+BIN=build_jc4880/esp32p4_android_auto.bin scripts/ota_push.sh
+```
+BLE OTA thì qua app Flutter. Lần flash đầu bắt buộc USB hoặc Wi-Fi.
+
+### Test
+
+Không có test on-target. Có 2 bộ test chạy trên host:
+
+```bash
+# 1. Serdes config VESC (C, host) — verify signature crc32c + byte stream
+#    khớp với reference Python
+cc -std=c11 -I components/vesc_config/include -I components/vesc_can/include \
+   tools/test/test_serdes.c components/vesc_config/vesc_config_serdes.c \
+   components/vesc_config/generated/*.c \
+   components/vesc_can/buffer.c components/vesc_can/crc.c -lm -o /tmp/test_serdes
+/tmp/test_serdes
+
+python3 tools/gen_vesc_config.py --self-test       # reference của test trên
+
+# 2. App Flutter (dart test — lisp lint/syntax/patch, BLE agent, helper fw…)
+cd flutter-application && flutter test
+flutter test test/lisp_lint_test.dart              # chạy 1 file
+flutter test --plain-name "<tên test>"             # chạy 1 test
+flutter analyze                                    # lint (analysis_options.yaml)
 ```
 
-Механизм:
+### Debug trên phần cứng thật
+
+```bash
+scripts/capture.sh 60 [--flash]      # log serial P4 → logs/<timestamp>.log
+scripts/capture_bt.sh                # log module BT agent
+scripts/capture_phone.sh             # logcat điện thoại (AA/Gearhead)
+scripts/capture_all.sh               # cả ba cùng lúc
+
+# Screenshot + inject touch (cần CONFIG_DEBUG_UART_BRIDGE=y, mặc định OFF)
+python3 scripts/uart_debug.py -p <PORT> screenshot scr.png
+python3 scripts/uart_debug.py -p <PORT> tap 400 240
+python3 scripts/uart_debug.py -p <PORT> swipe 700 240 100 240 300
+```
+`uart_debug.py` mở port ở chế độ **no-reset** → kết nối KHÔNG reboot thiết bị,
+màn hình đang hiện được giữ nguyên.
+
+### App Flutter & release
+
+```bash
+scripts/build_app.sh [--install|--debug|--with-key]   # APK (mặc định KHÔNG nhúng API key)
+scripts/install_app.sh                                # adb install -r bản release mới nhất
+
+scripts/release.sh                  # patch-bump fw+app, build mọi board, bundle APK
+scripts/release.sh 1.3.0 0.2.0      # chỉ định <fw_version> <app_version>
+```
+`release.sh` **không commit** — tự review rồi commit `version.txt`,
+`flutter-application/pubspec.yaml`, `release/*`, assets firmware đã stage.
+
+---
+
+## Kiến trúc — những gì cần đọc nhiều file mới hiểu
+
+### Ba tầng OTA, chỉ cần flash P4
+
+| Tầng | Cơ chế | File |
+|---|---|---|
+| **P4** | HTTP `/ota` hoặc BLE OTA, 2 slot `ota_0`/`ota_1` | `main/ota_http.c`, `main/ble_ota.c` |
+| **ESP32-C6** (Wi-Fi/BLE radio) | `network_adapter.bin` nhúng vào image P4 qua `EMBED_FILES`; boot so version qua `esp_hosted_get_coprocessor_fwversion` → lệch thì OTA qua SDIO → P4 tự restart | `main/c6_ota.c`, `components/c6_ota_partition/` |
+| **BT agent ngoài** | blob `.bin.gz` nhúng; boot đọc dòng `BT-VER:` qua UART → lệch thì ép vào ROM bootloader bằng RST/IO0 và reflash | `main/bt_agent_ota.c`, `components/bt_agent_fw/` |
+
+→ Không bao giờ phải flash C6 hay BT agent riêng; rebuild P4 với blob mới là đủ.
+BT agent OTA mặc định **tắt** (`CONFIG_BT_AGENT_OTA_ENABLED=n`) — không bật thì
+toàn bộ đường BT là no-op kể cả khi có module cắm vào.
+
+### Thứ tự boot trong `app_main` là ràng buộc, không phải ngẫu nhiên
+
+Chi tiết 14 bước ở `docs/ARCHITECTURE.md` §3. Những phụ thuộc dễ phá nhất:
+
+- `log_capture_init` phải chạy **trước mọi log khác**.
+- `aa_overclock_400mhz_apply` phải chạy **trước khi init peripheral**.
+- `install_lvgl_touch_indev` gỡ indev của BSP và thay bằng indev đọc từ
+  `touch_input` — **chỉ được có MỘT reader GT911**, hai reader sẽ race trên I2C.
+- `ui_mode_init` dựng dashboard GUI-Guider mất ~5 s → phải tạm gỡ IDLE0 khỏi TWDT.
+- `display_video_init` (sink) phải trước `h264_pipe_init` (decoder).
+- `trip_log` pre-erase lúc boot: erase flash giữa chuyến làm khựng DSI.
+
+### Hai chế độ touch, một reader
+
+`touch_input.c` giữ `TOUCH_MODE_AA` ↔ `TOUCH_MODE_LVGL`; `ui_mode.c` đổi mode
+bằng **gesture 3 ngón**. Ở mode AA, indev LVGL luôn báo `released` nên dashboard
+không nhận touch (và ngược lại). Thêm màn hình mới phải nghĩ tới mode nào đang bật.
+
+### Dashboard LVGL: `generated/` vs `custom/`
+
+`Super_VESC_Display/` là project **GUI-Guider**, compile vào firmware qua component `vesc_ui`.
+
+- `Super_VESC_Display/generated/` bị **ghi đè** mỗi lần export lại từ GUI-Guider
+  → **không bao giờ để logic cần giữ ở đây**.
+- `Super_VESC_Display/custom/` là code viết tay, sống sót qua regen: framework
+  theme (`dashboard_theme.c` + `theme_*.c`), menu config VESC, LISP editor,
+  trip statistics, PAS screen.
+- Glue phía firmware nằm ở `main/` (`vesc_ui_updater.c`, `ui_mode.c`, `*_screen.c`).
+- Theme: hàm `update_*()` do GUI-Guider sinh là **dispatcher** gọi ops của theme
+  đang active; theme lưu ở NVS key `dash_theme`.
+
+### Bẫy LVGL trên board này (đã trả giá, đừng lặp lại)
+
+- **LVGL v8.4**, RGB565. Config duy nhất là `main/lv_conf.h` với
+  `CONFIG_LV_CONF_SKIP=n` → **mọi symbol `CONFIG_LV_*` trong Kconfig bị bỏ qua**.
+  `CMakeLists.txt` gốc thêm `main/` vào include path toàn cục chính vì lý do này.
+- **Không đụng NVS trong thread LVGL** — `nvs_commit()`/erase làm đơ màn hình.
+  Debounce bằng cache RAM + persist trễ ngoài thread LVGL.
+- Display mode phải là **DOUBLE_FULL + ROTATE_90**. Đổi sang TRIPLE_PARTIAL +
+  ROTATE_90 sẽ dính bug mất ISR của PPA/DMA2D trên P4 → UI đứng.
+- Panel gốc **480×800 portrait**, xoay 90° → không gian logic 800×480 landscape.
+- Font mặc định Montserrat **chỉ có ASCII**: ký tự `…` (U+2026) ra ô tofu →
+  luôn dùng `...`.
+- Mỗi lần show/hide keyboard **bắt buộc** resize container nội dung kèm theo.
+
+### Ngân sách flash — jc4880 (16 MB) là ràng buộc chặt nhất
+
+`partitions_16mb.csv`: OTA slot 5 MB ×2, image ~3.8 MB → chỉ dư ~1.2 MB.
+(Waveshare 32 MB: OTA 2×7.875 MB, thoải mái.) Thêm font hay feature lớn phải
+kiểm `scripts/build_board.sh jc4880 size`. Giữ option debug
+(`CONFIG_DEBUG_UART_BRIDGE`, tốn flash + ~1 MB PSRAM) **tắt** trên jc4880 và
+trong bản release. Font Antonio được **auto-subset lúc build firmware** — bản
+ASCII đầy đủ ~1.4 MB sẽ vỡ slot. (Simulator KHÔNG auto-subset, phải regen tay.)
+
+### Codegen bảng config VESC
+
+`components/vesc_config/generated/` được sinh **offline**, không phải build-time:
+
+```bash
+python3 tools/gen_vesc_config.py --vesc-root <vesc_tool-master> \
+    --out components/vesc_config/generated --versions 6.05,6.06,7.00
+```
+Nó parse XML metadata của VESC Tool và bake sẵn *signature* crc32c theo thứ tự
+serialize, để thiết bị tự kiểm bảng của mình có khớp firmware VESC đang nói
+chuyện không. Sửa `vesc_config_serdes.c` hay bảng generated → **chạy lại
+`test_serdes`**, và cập nhật `EXPECT[]` trong test nếu thêm version firmware.
+
+---
+
+## Hỗ trợ nhiều board (mục cũ: "Поддержка нескольких девайсов")
+
+`idf.py build` trần = **Waveshare 4.3"** (mặc định, giữ tương thích ngược).
+Board khác dùng `scripts/build_board.sh <board> <idf.py args>`.
+
 - **Kconfig `choice BOARD_MODEL`** (`main/Kconfig.projbuild`):
-  `CONFIG_BOARD_WAVESHARE_43` (дефолт) / `CONFIG_BOARD_JC4880P443C`. Глобален →
-  читается в BSP и `main/bt_link.h`.
-- **`build_board.sh`** собирает в отдельную `build_<board>/` и накладывает
-  оверлей: `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.<board>"`
-  (поздний файл переопределяет ранний). Базовый `sdkconfig.defaults` = Waveshare.
-- **Пины/тайминги, не выражаемые через готовый Kconfig** (подсветка/reset LCD,
-  I2S DSIN/PA, DPI-тайминги панели, vendor-init ST7701, пины BT-агента) — через
-  `#if CONFIG_BOARD_JC4880P443C` в BSP (`components/esp32_p4_wifi6_touch_lcd_4_3/`)
-  и `main/bt_link.h`.
-- **sdkconfig-оверлеи** задают флеш, имя партишен-файла, CAN-пины, выбор борда:
-  `sdkconfig.defaults.waveshare` (32 МБ, `partitions.csv`, CAN 48/47) и
-  `sdkconfig.defaults.jc4880` (16 МБ, `partitions_16mb.csv`, CAN 51/52).
-- **JC = 16 МБ** → отдельная `partitions_16mb.csv`: OTA 5 МБ ×2 + storage 1 МБ +
-  triplog ~4.9 МБ. Образ ~3.8 МБ → запас в слоте ~1.2 МБ (24%), следить за ростом.
-- **JC пины** (свободный хедер): BT-агент `TX=33 RX=31 RST=30 IO0=29`,
-  CAN `RX=52 TX=51`, подсветка LCD `23`, reset LCD `5`. Дисплей ST7701S,
-  DPI 34 МГц, vendor-init по умолчанию драйвера; WiFi (SDIO→C6), I2C тача,
-  SD — совпадают с Waveshare.
-- **Идентификатор модели** `BOARD_MODEL_ID` (`main/board.h`, `"waveshare"`/
-  `"jc4880"`) прошивка сообщает приложению (BLE OTA-info `…0006` 6-м полем +
-  `GET /info`), чтобы APK выбрал правильный из вшитых бинарей.
-- **Релиз** (`scripts/release.sh`) собирает все борды, кладёт per-device бинари
-  `release/esp32p4_android_auto-<board>-<ver>.bin` и один APK с обеими прошивками.
-  Блобы C6 / BT-агента общие для всех плат.
+  `CONFIG_BOARD_WAVESHARE_43` (default) / `CONFIG_BOARD_JC4880P443C`. Global →
+  đọc được trong BSP và `main/bt_link.h`.
+- Choice này **không** set flash size / partition table / chân CAN — những thứ
+  đó nằm ở overlay `sdkconfig.defaults.<board>`: `waveshare` (32 MB,
+  `partitions.csv`, CAN 48/47) và `jc4880` (16 MB, `partitions_16mb.csv`,
+  CAN 51/52). **Phải giữ hai bên lockstep.**
+- Pin/timing không diễn đạt được bằng Kconfig sẵn có (backlight/reset LCD, I2S
+  DSIN/PA, DPI timing, vendor-init ST7701, pin BT agent) → `#if
+  CONFIG_BOARD_JC4880P443C` trong BSP `components/esp32_p4_wifi6_touch_lcd_4_3/`
+  và `main/bt_link.h`.
+- **Pin JC4880**: BT agent `TX=33 RX=31 RST=30 IO0=29`, CAN `RX=52 TX=51`,
+  backlight LCD `23`, reset LCD `5`. Panel ST7701S, DPI 34 MHz. Wi-Fi (SDIO→C6),
+  I2C touch, SD giống Waveshare.
+- **`BOARD_MODEL_ID`** (`main/board.h`, `"waveshare"`/`"jc4880"`) được firmware
+  báo cho app (BLE OTA-info `…0006` field thứ 6 + `GET /info`) để APK chọn đúng
+  binary trong số firmware đã nhúng.
+- Thêm board mới: thêm slug vào `BOARDS=()` trong `build_board.sh` **và**
+  `release.sh`, thêm `sdkconfig.defaults.<board>`, thêm nhánh Kconfig + `#if`
+  trong BSP, thêm `BOARD_MODEL_ID`.
 
-## Воспроизведение игнорируемых артефактов
+Ba nhánh version độc lập: firmware P4 (`version.txt` → `PROJECT_VER`, đổi rồi
+phải `reconfigure`), app (`pubspec.yaml`), firmware BT agent (bump riêng qua
+`tools/pack_fw_blobs.sh`, `release.sh` không đụng tới).
 
-Каталоги `tools/` и `research/_sources/` намеренно не закоммичены
-(см. `.gitignore`). Восстановить их можно так:
+---
+
+## Tái tạo artifact bị .gitignore ("Воспроизведение игнорируемых артефактов")
+
+`tools/` và `research/_sources/` cố ý **không commit** (xem `.gitignore`):
 
 ```bash
-# Reference-исходники AA / dongle / Waveshare BSP
+# Reference source AA / dongle / Waveshare BSP
 mkdir -p research/_sources && cd research/_sources
 git clone --depth 1 https://github.com/f1xpl/aasdk
 git clone --depth 1 https://github.com/f1xpl/openauto
@@ -381,23 +240,51 @@ git clone --depth 1 https://github.com/andreknieriem/headunit-revived headunit
 git clone --depth 1 https://github.com/Nicba1010/WirelessAndroidAutoDongle
 git clone --depth 1 https://github.com/waveshareteam/ESP32-P4-WIFI6-Touch-LCD-4.3 waveshare_p4_4_3
 
-# tools/c6_slave_fw — slave firmware build (нужно при апдейте network_adapter.bin)
+# tools/c6_slave_fw — build firmware C6 (chỉ cần khi update network_adapter.bin)
 cd <repo_root>/tools && idf.py create-project-from-example "espressif/esp_hosted^2.12.6:slave"
 mv slave c6_slave_fw && cd c6_slave_fw && idf.py set-target esp32c6 && idf.py build
 cp build/network_adapter.bin ../../components/c6_ota_partition/slave_fw_bin/
 
-# tools/c6_ota_flasher — standalone OTA-flasher (на случай если основная прошивка
-# поломается и нужно прошить C6 отдельным проектом)
+# tools/c6_ota_flasher — flasher OTA standalone (phòng khi firmware chính hỏng)
 cd .. && idf.py create-project-from-example "espressif/esp_hosted^2.12.6:host_performs_slave_ota"
 mv host_performs_slave_ota c6_ota_flasher
 ```
 
-## Прошивка C6 (ESP-Hosted slave) встраивается в основной бинарь
+BSP trong `components/esp32_p4_wifi6_touch_lcd_4_3/` lấy từ
+`research/_sources/waveshare_p4_4_3/examples/esp-idf/07_Displaycolorbar/components/`
+rồi patch thêm cho board thứ hai. Demo hữu ích: `08_lvgl_demo_v9`,
+`09_video_lcd_display`, `10_mp4_player`, `11_esp_brookesia_phone`.
 
-`network_adapter.bin` под ESP32-C6 лежит в
-`components/c6_ota_partition/slave_fw_bin/` и через `EMBED_FILES`
-встраивается в `esp32p4_android_auto.bin` как блоб в `.rodata`.
-При старте `main/c6_ota.c` сравнивает версию C6 с версией хоста
-(через `esp_hosted_get_coprocessor_fwversion`) и при несовпадении
-шлёт встроенный блоб через SDIO как OTA-апдейт. После апдейта
-P4 ребутится; на следующем заходе версии совпадают, OTA пропускается.
+`tools/bt_agent/` (firmware BT agent, ESP-IDF target `esp32`) cũng git-ignored;
+blob đã build nằm sẵn trong `components/bt_agent_fw/` nên build firmware P4 không
+cần nó.
+
+---
+
+## Lưu ý về Android Auto stack
+
+Là bản port của [aasdk](https://github.com/f1xpl/aasdk) sang ESP-IDF:
+Boost.Asio → FreeRTOS task + lwIP socket, OpenSSL → mbedTLS, protobuf → nanopb,
+Boost.Log → `ESP_LOG`. File `.proto` lấy từ aasdk, regen cho nanopb.
+
+Những hằng số trong `main/config.h` có comment giải thích **tại sao**, đọc trước
+khi đổi. Đáng chú ý:
+
+- `ENABLE_AUDIO 1` là **bắt buộc** — Gearhead 1.7 từ chối head unit không có
+  audio channel (SD response 168 byte → `ERR_INVALID_STATE` → đóng TCP).
+- `ENABLE_AUDIO_MEDIA`/`SPEECH` = 0 có chủ đích: nhạc và TTS nav ở lại điện
+  thoại, tránh chiếm băng thông TCP của đường video.
+- `aa_x509_patch.c` tồn tại để vá lỗi UTCTime wrap của mbedTLS với cert AA.
+
+Reference: [aasdk](https://github.com/f1xpl/aasdk) ·
+[openauto](https://github.com/f1xpl/openauto) ·
+[headunit-revived](https://github.com/andreknieriem/headunit-revived) ·
+[esp-h264](https://github.com/espressif/esp-h264)
+
+---
+
+## Skills có sẵn (`.claude/skills/`)
+
+`head-unit` (bản đồ project) · `build-flash` · `release` · `capture-logs` ·
+`device-screen` (screenshot + inject touch trên hardware thật) · `dashboard-ui`
+(bẫy LVGL, theme, font). Dùng chúng thay vì suy luận lại quy trình.
