@@ -1,4 +1,4 @@
-🇬🇧 **English** | 🇷🇺 [Русский](README.ru.md)
+🇬🇧 **English** | 🇷🇺 [Русский](README.ru.md) | 🇻🇳 [Tiếng Việt](README.vi.md)
 
 # VESC Dashboard for ESP32-P4 🛴⚡
 
