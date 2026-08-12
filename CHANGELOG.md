@@ -9,6 +9,67 @@ changes.
 Entries below name the firmware version; the app version of the same release is
 the one recorded in the release commit.
 
+## v1.3.6 / app 0.3.6 — 2026-08-05
+
+### One navigation strip across the on-device web UI
+
+- The three built-in pages — `/ota` (firmware update), `/files` (file manager)
+  and `/lisp` (LISP editor) — now share an identical tab strip, so they read as
+  one interface instead of three unrelated pages. Markup and CSS live in
+  `main/web_nav.h`; the current tab is marked by appending `on` to its class.
+- No JavaScript: every tab is a plain link to a sibling page, which costs
+  nothing and survives a reload.
+- The LISP editor is a standalone gzipped `.html` and cannot include a C
+  header, so it carries its own copy of the strip — the header says so, and the
+  two have to be kept in step by hand.
+
+### Line-by-line Russian walkthrough of the LISP script
+
+- `lisp/main.ru.lisp`: the same code as `main.lisp` with an explanation above
+  every line. Documentation only — **`main.lisp` is what gets flashed**, and
+  this copy has to be updated by hand when the real script changes.
+
+## v1.3.5 / app 0.3.5 — 2026-08-05
+
+### The display no longer dies on the CAN bus (and neither does the helper)
+
+- `comm_can.c` never handled **TWAI bus-off**. Past 255 transmit errors the
+  controller stops, and it does not come back on its own: recovery has to be
+  requested, and after 128 sequences of 11 recessive bits the driver waits in
+  STOPPED for an explicit start. Without those two calls a node that hit bus-off
+  was simply gone from the bus until its power was cycled — every send returned
+  silently, with nothing in the log.
+- Found while chasing dead pedal assist: the **C3 BLE helper** lost PAS, the
+  throttle toggle and its state queries all at the same instant, and only a
+  power cycle brought them back. Same bug, same file — the helper's fix ships as
+  its `v1.0.8`.
+- `can_health_check()` now runs every 500 ms from the receive task (which
+  already wakes on a 10 ms timeout, so no new task): bus-off → recovery,
+  STOPPED → restart, both logged.
+
+### Why the bus gets there
+
+A trace of the wire counted **35 615 bus errors** with our own
+`tx_error_counter` pinned at 128, on a 1 Mbit/s bus with three nodes. Recovery
+removes the permanent death, not the errors. If the recovery counter climbs in
+normal use, the bus itself wants attention — 500 kbit/s is the VESC default and
+has twice the timing margin.
+
+### CAN polling hold-off
+
+- New `CONFIG_VESC_CAN_POLL_START_DELAY_MS`, default **4000**: the display stays
+  off the bus for the first four seconds, while the other nodes and the VESC's
+  LISP script come up. Cheap insurance, not the fix — note that it delays only
+  the *polling*; the TWAI controller itself joins the bus at `comm_can_start()`
+  and participates in ACK and error signalling from that moment.
+
+### Bundled helper firmware
+
+- Now **1.0.8** (was 1.0.6 in the 0.3.4 APK, which predated the helper release).
+  `stage_firmware_asset.sh` pulls it from the helper repo's latest GitHub
+  release at build time, so cutting this release after publishing the helper's
+  is what keeps the two in step.
+
 ## v1.3.4 / app 0.3.4 — 2026-08-03
 
 No firmware or app code changed in this repository — this release exists to ship
