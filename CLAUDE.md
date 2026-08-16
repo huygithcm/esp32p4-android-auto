@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Shared Claude/Codex workspace
+
+Claude, Codex, and the user edit the same working tree at
+`C:\esp32p4-android-auto`. Before editing, read `AGENTS.md` and
+`COLLABORATION_LOG.md`, inspect `git status --short --branch` plus relevant
+diffs, and preserve every pre-existing change. Record material work and its
+verification in `COLLABORATION_LOG.md` before handoff. Use repository-relative
+paths in project files and do not pull, rebase, reset, clean, or stash across a
+dirty shared working tree without explicit coordination.
+
 ---
 
 ## Đây là dự án gì
