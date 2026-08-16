@@ -14,6 +14,7 @@
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 
+#include "ble_bms_client.h"
 #include "ble_cadence_client.h"
 #include "ble_nus.h"
 #include "notif_bridge.h"
@@ -227,6 +228,7 @@ static void on_sync_cb(void)
      * known, let the cadence (PAS) central client (re)connect to its bound
      * sensor. Scanning/connecting runs concurrently with advertising. */
     ble_cadence_on_ble_sync(s_own_addr_type);
+    ble_bms_on_ble_sync(s_own_addr_type);
 }
 
 static void host_task(void *arg)
@@ -280,6 +282,7 @@ esp_err_t ble_host_init(void)
 
     notif_bridge_init();
     ble_cadence_client_init();
+    ble_bms_client_init();
 
     const struct ble_gatt_svc_def *nus_svcs   = ble_nus_get_svcs();
     const struct ble_gatt_svc_def *bridge_svcs = notif_bridge_get_svcs();

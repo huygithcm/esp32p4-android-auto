@@ -18,6 +18,7 @@ idf_component_register(
         "aa_service.c"
         "aa_x509_patch.c"
         "ble_host.c"
+        "ble_bms_client.c"
         "ble_cadence_client.c"
         "ble_nus.c"
         "notif_bridge.c"
@@ -76,6 +77,7 @@ idf_component_register(
         vesc_ui
         vesc_can
         vesc_config
+        bms
         dev_settings
         log_capture
         trip_log
