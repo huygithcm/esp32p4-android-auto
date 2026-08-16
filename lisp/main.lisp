@@ -55,19 +55,19 @@
 ; profile is a fraction of it. Braking is never scaled — always full.
 (defun apply-profile (profile-index) {
     (if (= profile-index 0) {
-        (conf-set 'max-speed (/ 25.0 3.6))
-        (conf-set 'l-current-max-scale 0.5)
-        (print "Profile 0: Slow (25 km/h, 50% current)")
+        (conf-set 'max-speed (/ 5.0 3.6))
+        (conf-set 'l-current-max-scale 0.3)
+        (print "Profile 0: Slow (5 km/h, 30% current)")
     } {
         (if (= profile-index 1) {
-            (conf-set 'max-speed (/ 40.0 3.6))
-            (conf-set 'l-current-max-scale 0.67)
-            (print "Profile 1: Medium (40 km/h, 67% current)")
+            (conf-set 'max-speed (/ 10.0 3.6))
+            (conf-set 'l-current-max-scale 0.6)
+            (print "Profile 1: Medium (10 km/h, 60% current)")
         } {
             (if (= profile-index 2) {
-                (conf-set 'max-speed (/ 60.0 3.6))
+                (conf-set 'max-speed (/ 20.0 3.6))
                 (conf-set 'l-current-max-scale 1.0)
-                (print "Profile 2: Fast (60 km/h, 100% current)")
+                (print "Profile 2: Fast (20 km/h, 100% current)")
             })
         })
     })
@@ -245,9 +245,9 @@
     (pi32 0) (pi32 50000) (pi32 5000) (pi32 (* beep-vol 1000)) (pstr "")
     ; Profile radio group (ids 10..12) — exactly one is lit, tapping a row
     ; selects that profile. Keep the labels in step with apply-profile.
-    (pu8 10) (pu8 1) (pstr "Slow 25 km/h")   (pu8 (if (= current-profile 0) 1 0))
-    (pu8 11) (pu8 1) (pstr "Medium 40 km/h") (pu8 (if (= current-profile 1) 1 0))
-    (pu8 12) (pu8 1) (pstr "Fast 60 km/h")   (pu8 (if (= current-profile 2) 1 0))
+    (pu8 10) (pu8 1) (pstr "Slow 5 km/h")    (pu8 (if (= current-profile 0) 1 0))
+    (pu8 11) (pu8 1) (pstr "Medium 10 km/h") (pu8 (if (= current-profile 1) 1 0))
+    (pu8 12) (pu8 1) (pstr "Fast 20 km/h")   (pu8 (if (= current-profile 2) 1 0))
     (send-data pbuf 2 reply-id)
 })
 (defun panel-send-state (reply-id) {
