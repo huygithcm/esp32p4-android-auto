@@ -94,6 +94,11 @@ int main(int argc, char ** argv)
     /*Create a GUI-Guider app */
     setup_ui(&guider_ui);
     custom_init(&guider_ui);
+    /* Direct entry for BMS frontend work and screenshot automation. The
+     * Realtime simulator selects its BMS tab by default. */
+    if(argc > 1 && strcmp(argv[1], "--bms-preview") == 0) {
+        show_realtime_viewer();
+    }
 #if LV_USE_FREEMASTER
     pthread_mutex_init(&jsonrpc_mutex, NULL);
     pthread_mutex_init(&lvgl_mutex, NULL);

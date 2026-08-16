@@ -13,6 +13,7 @@
  */
 #include "lvgl.h"
 #include "custom.h"
+#include "bms_view.h"
 
 extern lv_ui guider_ui;
 
@@ -41,6 +42,7 @@ typedef enum {
 } rt_field_t;
 
 static lv_obj_t  *s_screen;
+static lv_obj_t  *s_tabview;
 static lv_obj_t  *s_val[RT_COUNT];
 static lv_timer_t *s_timer;
 static bool       s_alive;
@@ -57,9 +59,41 @@ static void screen_unloaded_cb(lv_event_t *e)
     if (lv_event_get_code(e) != LV_EVENT_SCREEN_UNLOADED) return;
     s_alive = false;
     vesc_io_data_set_active(false);
+    bms_view_set_active(false);
+    bms_view_destroy();
     if (s_timer) { lv_timer_del(s_timer); s_timer = NULL; }
     if (s_screen) { lv_obj_del_async(s_screen); s_screen = NULL; }
+    s_tabview = NULL;
     for (int i = 0; i < RT_COUNT; i++) s_val[i] = NULL;
+}
+
+static void tab_changed_cb(lv_event_t *e)
+{
+    lv_obj_t *tabs = lv_event_get_target(e);
+    uint16_t active = lv_tabview_get_tab_act(tabs);
+    bool vesc_visible = active == 0;
+    vesc_io_data_set_active(vesc_visible);
+    bms_view_set_active(active == 1);
+}
+
+static void style_tabview(lv_obj_t *tabs)
+{
+    lv_obj_set_style_bg_color(tabs, lv_color_hex(COL_BG), 0);
+    lv_obj_set_style_border_width(tabs, 0, 0);
+    lv_obj_set_style_pad_all(tabs, 0, 0);
+    lv_obj_t *buttons = lv_tabview_get_tab_btns(tabs);
+    lv_obj_set_style_bg_color(buttons, lv_color_hex(COL_PANEL), 0);
+    lv_obj_set_style_text_color(buttons, lv_color_hex(COL_DIM),
+                                LV_PART_ITEMS | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(buttons, lv_color_hex(COL_ACCENT),
+                                LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(buttons, lv_color_hex(COL_PANEL),
+                              LV_PART_ITEMS | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(buttons, lv_color_hex(COL_BTN),
+                              LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_border_width(buttons, 0, LV_PART_ITEMS);
+    lv_obj_set_style_text_font(buttons, &lv_font_montserratMedium_16,
+                               LV_PART_ITEMS);
 }
 
 static lv_obj_t *add_row(lv_obj_t *list, const char *name)
@@ -162,10 +196,24 @@ void show_realtime_viewer(void)
     lv_obj_set_style_text_color(title, lv_color_hex(COL_TEXT), 0);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
 
-    /* scrollable value list */
-    lv_obj_t *list = lv_obj_create(s_screen);
-    lv_obj_set_pos(list, 8, 56);
-    lv_obj_set_size(list, 784, 416);
+    /* Realtime now has a VESC telemetry tab and a read-only BMS tab. */
+    s_tabview = lv_tabview_create(s_screen, LV_DIR_TOP, 42);
+    lv_obj_set_pos(s_tabview, 8, 56);
+    lv_obj_set_size(s_tabview, 784, 416);
+    style_tabview(s_tabview);
+    lv_obj_add_event_cb(s_tabview, tab_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    lv_obj_t *vesc_tab = lv_tabview_add_tab(s_tabview, "VESC");
+    lv_obj_t *bms_tab = lv_tabview_add_tab(s_tabview, "BMS");
+    lv_obj_set_style_pad_all(vesc_tab, 0, 0);
+    lv_obj_set_style_pad_all(bms_tab, 0, 0);
+    lv_obj_clear_flag(vesc_tab, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(bms_tab, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* scrollable VESC value list */
+    lv_obj_t *list = lv_obj_create(vesc_tab);
+    lv_obj_set_pos(list, 0, 0);
+    lv_obj_set_size(list, lv_pct(100), lv_pct(100));
     lv_obj_set_style_bg_color(list, lv_color_hex(COL_PANEL), 0);
     lv_obj_set_style_border_width(list, 0, 0);
     lv_obj_set_style_radius(list, 6, 0);
@@ -199,11 +247,14 @@ void show_realtime_viewer(void)
     s_val[RT_PPM]   = add_row(list, "PPM level");
     s_val[RT_PPMMS] = add_row(list, "PPM pulse");
 
+    bms_view_create(bms_tab);
+
     lv_obj_add_event_cb(s_screen, screen_unloaded_cb, LV_EVENT_SCREEN_UNLOADED, NULL);
     s_alive = true;
 
     /* Turn on the ADC/PPM poller and start refreshing labels. */
     vesc_io_data_set_active(true);
+    bms_view_set_active(false);
     s_timer = lv_timer_create(update_cb, 200, NULL);
     update_cb(s_timer);
 
@@ -213,17 +264,27 @@ void show_realtime_viewer(void)
 #else  /* !LV_REALDEVICE — desktop simulator placeholder */
 
 static lv_obj_t *s_sim_screen;
+static lv_obj_t *s_sim_tabs;
 
 static void sim_unloaded_cb(lv_event_t *e)
 {
     if (lv_event_get_code(e) != LV_EVENT_SCREEN_UNLOADED) return;
+    bms_view_set_active(false);
+    bms_view_destroy();
     if (s_sim_screen) { lv_obj_del_async(s_sim_screen); s_sim_screen = NULL; }
+    s_sim_tabs = NULL;
 }
 
 static void sim_back_cb(lv_event_t *e)
 {
     (void)e;
     lv_scr_load_anim(guider_ui.dashboard_Classic, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+}
+
+static void sim_tab_changed_cb(lv_event_t *e)
+{
+    lv_obj_t *tabs = lv_event_get_target(e);
+    bms_view_set_active(lv_tabview_get_tab_act(tabs) == 1);
 }
 
 void show_realtime_viewer(void)
@@ -241,9 +302,44 @@ void show_realtime_viewer(void)
     lv_obj_center(bl);
     lv_obj_add_event_cb(btn, sim_back_cb, LV_EVENT_CLICKED, NULL);
 
-    lv_obj_t *lbl = lv_label_create(s_sim_screen);
-    lv_label_set_text(lbl, "Realtime viewer is available on the device build.");
+    lv_obj_t *title = lv_label_create(s_sim_screen);
+    lv_label_set_text(title, "Realtime");
+    lv_obj_set_pos(title, 230, 21);
+    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserratMedium_24, 0);
+
+    s_sim_tabs = lv_tabview_create(s_sim_screen, LV_DIR_TOP, 42);
+    lv_obj_set_pos(s_sim_tabs, 8, 64);
+    lv_obj_set_size(s_sim_tabs, 784, 408);
+    lv_obj_set_style_bg_color(s_sim_tabs, lv_color_hex(0x07090A), 0);
+    lv_obj_set_style_border_width(s_sim_tabs, 0, 0);
+    lv_obj_set_style_pad_all(s_sim_tabs, 0, 0);
+    lv_obj_t *buttons = lv_tabview_get_tab_btns(s_sim_tabs);
+    lv_obj_set_style_bg_color(buttons, lv_color_hex(0x12181C), 0);
+    lv_obj_set_style_text_color(buttons, lv_color_hex(0x8A9499),
+                                LV_PART_ITEMS | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(buttons, lv_color_hex(0xB6FF2E),
+                                LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(buttons, lv_color_hex(0x2A3440),
+                              LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_border_width(buttons, 0, LV_PART_ITEMS);
+    lv_obj_set_style_text_font(buttons, &lv_font_montserratMedium_16,
+                               LV_PART_ITEMS);
+    lv_obj_add_event_cb(s_sim_tabs, sim_tab_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    lv_obj_t *vesc_tab = lv_tabview_add_tab(s_sim_tabs, "VESC");
+    lv_obj_t *bms_tab = lv_tabview_add_tab(s_sim_tabs, "BMS");
+    lv_obj_set_style_pad_all(vesc_tab, 0, 0);
+    lv_obj_set_style_pad_all(bms_tab, 0, 0);
+    lv_obj_clear_flag(vesc_tab, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(bms_tab, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *lbl = lv_label_create(vesc_tab);
+    lv_label_set_text(lbl, "VESC realtime data is available on the device build.");
     lv_obj_center(lbl);
+    bms_view_create(bms_tab);
+    lv_tabview_set_act(s_sim_tabs, 1, LV_ANIM_OFF);
+    bms_view_set_active(true);
 
     lv_obj_add_event_cb(s_sim_screen, sim_unloaded_cb, LV_EVENT_SCREEN_UNLOADED, NULL);
     lv_scr_load_anim(s_sim_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);

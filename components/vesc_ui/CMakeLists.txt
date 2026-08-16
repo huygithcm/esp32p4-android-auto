@@ -96,6 +96,8 @@ idf_component_register(
         dev_settings
         log_capture
         qr_info
+        bt
+        bms
         vesc_config
         vesc_can
         trip_log
