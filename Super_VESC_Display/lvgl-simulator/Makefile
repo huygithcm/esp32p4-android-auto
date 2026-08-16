@@ -16,9 +16,17 @@ CFLAGS += -I$(LVGL_DIR)/$(LVGL_DIR_NAME)/ -I$(LVGL_DIR)/$(LVGL_DIR_NAME)/src
 UNAME_S := $(shell uname -s)
 
 ifeq ($(OS),Windows_NT)
--include $(SIMULATOR_DIR)/gg_external_data/freemaster/freemaster.mk
--include $(SIMULATOR_DIR)/gg_external_data/gg_external_data.mk
-LDFLAGS := -lSDL2 -L$(libfile_path) -ldecoder -lopenh264 -lrlottie -lpthread -lstdc++ -ljansson -lcurl -lm
+# FreeMASTER is off (LV_USE_FREEMASTER 0 in lv_conf.h) and every use of it in
+# main.c sits behind that guard, but these two makefiles add the FreeMASTER
+# sources unconditionally and those sources include <curl/curl.h> and
+# <jansson.h> with no guard of their own. MSYS2 ships no 32-bit jansson, so
+# compiling them is impossible here and pointless anyway. Restore both lines
+# together with -ljansson -lcurl if LV_USE_FREEMASTER is ever turned on.
+#-include $(SIMULATOR_DIR)/gg_external_data/freemaster/freemaster.mk
+#-include $(SIMULATOR_DIR)/gg_external_data/gg_external_data.mk
+# -ldecoder dropped: lib/native/libdecoder.a is a macOS Mach-O archive, so it
+# cannot link on Windows, and no simulator source includes decoder.h.
+LDFLAGS := -lSDL2 -L$(libfile_path) -lopenh264 -lrlottie -lpthread -lstdc++ -lm
 else ifeq ($(UNAME_S),Darwin)
 BREW_PREFIX := $(shell brew --prefix 2>/dev/null)
 ifeq ($(BREW_PREFIX),)
