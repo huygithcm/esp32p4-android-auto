@@ -28,6 +28,38 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-17 22:43 +07:00 - Claude - Correct the wire-resistance source; withhold it
+- Scope: the user asked for a careful pass over the esphome-jk-bms protocol.
+  It found a defect in my own work rather than confirming it.
+- **Defect**: the settings-frame resistance decoder rests on a claim that a
+  better source contradicts. syssi/esphome-jk-bms decodes "cell voltages AND
+  cell internal resistances" from the **0x02 cell frame**; my code reads them
+  from the 0x01 settings frame at 158/142, which is very likely configuration
+  bytes relabelled as resistance.
+- **The exact 0x02 offset could not be established.** Six attempts - raw
+  GitHub (429), jsDelivr (timeout), two DeepWiki pages, an issue (404), a
+  search - none carried it. It is derivable-looking (24S cells end at 54, pack
+  voltage is at 118, 64 bytes fits average/delta/index plus 24 entries) and I
+  did not derive it. That is the same reasoning this driver rejects everywhere
+  else, and a wrong resistance array is invisible on screen.
+- Action: values are still parsed but `wire_res_valid_mask` is forced to 0, so
+  the FE renders them unavailable instead of plausible. The first cell frame of
+  each session now hex-dumps the window between the cell array and the pack
+  voltage, where the resistances must be - on a live pack they are a regular
+  run of small non-zero 16-bit values, one per cell.
+- The existing test failed on this change, which is what it was written for. It
+  now asserts the values stay unpublished and is marked to be flipped once the
+  offset is known.
+- Files: `components/bms/bms_jk.c`, `components/bms/include/bms/bms_jk.h`,
+  `main/ble_bms_client.c`, `tools/test/test_bms_jk.c`. Committed as f390446.
+- Checks: host test **PASSED, 0 failures**, 8 groups. Firmware builds for
+  jc4880, image 0x4375E0, **16% free**.
+- Status: complete
+- Handoff to Codex: **wire resistance is now permanently unavailable until
+  hardware settles it** - please keep it in the FE's unavailable list rather
+  than waiting on a backend fix. Everything else in the contract is unchanged.
+  Branch `develop` is 6 commits ahead of origin and not pushed.
+
 ### 2026-08-17 00:02 +07:00 - Claude - Serial telemetry dump for BMS bring-up
 - Scope: the backend logged connection lifecycle only - no decoded values ever
   reached the console. That left no way to check the parser against a real pack.
