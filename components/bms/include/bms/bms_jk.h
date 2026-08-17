@@ -88,6 +88,10 @@ typedef struct {
 
 void jk_init(jk_ctx_t *ctx);
 
+/* Raw bytes of the most recently completed frame. Valid only until the next
+ * one arrives; intended for bring-up logging, not for decoding. */
+const uint8_t *jk_frame_buf(const jk_ctx_t *ctx);
+
 /* Force the layout when auto-detection cannot decide (user override). */
 void jk_set_proto(jk_ctx_t *ctx, jk_proto_t proto);
 jk_proto_t jk_get_proto(const jk_ctx_t *ctx);

@@ -70,6 +70,11 @@ static uint8_t jk_checksum(const uint8_t *p, size_t n)
     return sum;
 }
 
+const uint8_t *jk_frame_buf(const jk_ctx_t *ctx)
+{
+    return ctx ? ctx->buf : NULL;
+}
+
 void jk_init(jk_ctx_t *ctx)
 {
     if (!ctx) return;
@@ -137,9 +142,21 @@ static void decode_device_info(jk_ctx_t *ctx)
     }
 }
 
-/* Settings frame (0x01). We want exactly one thing out of it: the per-cell
- * balance-lead resistances, which the cell frame does not carry. Everything
- * else in here is configuration the display has no business showing. */
+/* Settings frame (0x01).
+ *
+ * This was written to pull per-cell balance-lead resistances out of here, on
+ * one source's claim that the cell frame does not carry them. A later, more
+ * authoritative reading contradicts that: the community implementation's cell
+ * info decoder handles "cell voltages AND cell internal resistances" from the
+ * 0x02 frame, so the block below is very likely reading configuration bytes
+ * and calling them resistances.
+ *
+ * Rather than publish plausible nonsense, the values are parsed but NOT marked
+ * valid, so the UI shows them as unavailable. The exact offset of the
+ * resistance array inside the 0x02 frame could not be established from
+ * documentation; ble_bms_client dumps the candidate region of the first cell
+ * frame to the console so the first session with real hardware can settle it.
+ * Once it is known, decode it in decode_cell_info and delete this. */
 static void decode_settings(jk_ctx_t *ctx)
 {
     if (ctx->proto == JK_PROTO_UNKNOWN) return;
@@ -161,7 +178,10 @@ static void decode_settings(jk_ctx_t *ctx)
          * every entry and let the cell mask filter later. */
         mask |= (1u << i);
     }
-    ctx->wire_res_valid_mask = mask;
+    /* Deliberately NOT stored as valid — see the note above. Keeping the read
+     * makes the eventual fix a one-line change instead of a rewrite. */
+    (void)mask;
+    ctx->wire_res_valid_mask = 0;
 }
 
 static void decode_cell_info(jk_ctx_t *ctx, bms_snapshot_t *out)

@@ -186,8 +186,13 @@ int main(void)
     CHECK((s.valid_mask & BMS_V_TIMERS) && s.emergency_timer_s == 90,
           "32S timer wrong: %u", s.emergency_timer_s);
 
-    /* ---- wire resistance arrives on the SETTINGS frame, not the cell one - */
-    printf("[wire resistance from settings frame]\n");
+    /* ---- wire resistance is parsed but NOT published ---------------------
+     * The settings-frame offsets came from a source that a later, better
+     * reading contradicts: the community decoder takes cell resistances out of
+     * the 0x02 cell frame, not 0x01. Until the real offset is established
+     * against hardware, the driver must publish nothing rather than plausible
+     * numbers. Flip these assertions when the offset is known. */
+    printf("[wire resistance withheld until verified]\n");
     jk_init(&ctx);
     jk_set_proto(&ctx, JK_PROTO_02_24S);
     make_cell_frame(f, 0, 4);
@@ -199,18 +204,18 @@ int main(void)
     memset(g, 0, sizeof g);
     g[0] = 0x55; g[1] = 0xAA; g[2] = 0xEB; g[3] = 0x90;
     g[4] = JK_FRAME_SETTINGS;
-    put_u16(&g[158 + 0 * 2], 3);        /* cell 1: 3 mOhm */
-    put_u16(&g[158 + 1 * 2], 5);        /* cell 2: 5 mOhm */
+    put_u16(&g[158 + 0 * 2], 3);
+    put_u16(&g[158 + 1 * 2], 5);
     seal(g);
     CHECK(jk_feed(&ctx, g, sizeof g, &s) == JK_FEED_SETTINGS,
           "settings frame not recognised");
 
-    /* The next cell frame must carry the resistances forward. */
     make_cell_frame(f, 0, 4);
     CHECK(jk_feed(&ctx, f, sizeof f, &s) == JK_FEED_SNAPSHOT, "cell frame");
-    CHECK(s.valid_mask & BMS_V_WIRE_RES, "wire resistance not merged forward");
-    CHECK(s.wire_res_mohm[0] == 3 && s.wire_res_mohm[1] == 5,
-          "wire res wrong: %u %u", s.wire_res_mohm[0], s.wire_res_mohm[1]);
+    CHECK((s.valid_mask & BMS_V_WIRE_RES) == 0,
+          "wire resistance must stay UNPUBLISHED while its source is unverified");
+    CHECK(s.wire_res_valid_mask == 0,
+          "per-cell wire mask must be empty, got 0x%x", s.wire_res_valid_mask);
 
     /* ---- command framing ------------------------------------------------ */
     printf("[command frame]\n");

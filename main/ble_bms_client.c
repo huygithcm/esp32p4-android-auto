@@ -1,5 +1,6 @@
 #include "ble_bms_client.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -365,6 +366,32 @@ static void log_snapshot(const bms_snapshot_t *s, bool full)
     }
     if (s->valid_mask & BMS_V_TIMERS) {
         ESP_LOGI(TAG, "  emergency timer %u s", s->emergency_timer_s);
+    }
+
+    /* The per-cell resistance array is known to live somewhere in the 0x02
+     * frame but its offset could not be pinned down from documentation, so it
+     * is currently not published. It has to sit between the end of the cell
+     * voltages and the pack voltage at 118+shift — dump that window so the
+     * first real session can find it: with a live pack the resistances are
+     * small non-zero 16-bit values, one per cell, in a regular run. */
+    {
+        const uint8_t *raw = jk_frame_buf(&s_jk);
+        if (raw) {
+            const bool is32 = jk_get_proto(&s_jk) == JK_PROTO_02_32S;
+            const int  from = is32 ? 70 : 54;         /* just past the cells  */
+            const int  to   = is32 ? 150 : 118;       /* pack voltage         */
+            ESP_LOGI(TAG, "  -- unknown region [%d..%d) of the cell frame, "
+                          "resistances should be in here --", from, to);
+            for (int o = from; o < to; o += 16) {
+                char line[80];
+                int  n = 0;
+                for (int k = 0; k < 16 && o + k < to; k++) {
+                    n += snprintf(line + n, sizeof line - n, "%02X ",
+                                  raw[o + k]);
+                }
+                ESP_LOGI(TAG, "  %03d: %s", o, line);
+            }
+        }
     }
 
     /* Cell-by-cell is what actually proves the layout. A 32-byte offset error
