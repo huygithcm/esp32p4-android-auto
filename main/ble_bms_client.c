@@ -57,6 +57,12 @@ static TaskHandle_t        s_worker;
 static jk_ctx_t            s_jk;
 static int8_t              s_rssi_dbm;
 static bool                s_logged_full;
+static char                s_peer_name[32];
+/* Set by bind(), consumed by the worker task: ble_bms_bind runs on the LVGL
+ * task when the user taps a scan hit, and an nvs_commit there is the exact
+ * freeze this project's CLAUDE.md warns about. The worker owns NVS instead. */
+static volatile bool       s_store_peer;
+static volatile bool       s_erase_peer;
 /* Starts false to match bms_view's own initial state — see the header. */
 static bool                s_active;
 
@@ -239,6 +245,8 @@ static int bms_gap_event(struct ble_gap_event *event, void *arg)
         if (s_bound && memcmp(&event->disc.addr, &s_bound_addr,
                               sizeof s_bound_addr) == 0) {
             s_rssi_dbm = event->disc.rssi;
+            /* Remember what it calls itself; the frames never say. */
+            snprintf(s_peer_name, sizeof s_peer_name, "%s", name);
         }
         if (s_scan_cb) s_scan_cb(&event->disc.addr, name, event->disc.rssi);
         return 0;
@@ -284,8 +292,14 @@ static int bms_gap_event(struct ble_gap_event *event, void *arg)
 
         /* Keep this callback short: copy out of the mbuf and leave. Parsing a
          * 300-byte frame here would run on the NimBLE host task and stall
-         * every other BLE link, including the phone app. */
-        uint8_t tmp[256];
+         * every other BLE link, including the phone app.
+         *
+         * The buffer must hold a COMPLETE frame: we request MTU 512+, so the
+         * whole 300-byte reply arriving as one notification is the normal
+         * case, not the exception. At 256 this truncated 44 bytes off every
+         * such frame and each one died at the checksum — found in Codex's
+         * integration audit before it could burn a hardware session. */
+        uint8_t tmp[JK_FRAME_LEN + 20];
         const uint16_t take = (n > sizeof tmp) ? sizeof tmp : n;
         if (ble_hs_mbuf_to_flat(event->notify_rx.om, tmp, take, NULL) != 0) {
             return 0;
@@ -347,6 +361,11 @@ static void log_snapshot(const bms_snapshot_t *s, bool full)
              s->cell_count, s->cell_min_mv, s->cell_max_mv, s->cell_delta_mv,
              s->mos_temp_deci_c / 10, abs(s->mos_temp_deci_c % 10),
              s->chg_mos_on, s->dsg_mos_on, s->balancing, s->rssi_dbm);
+    if (full && (s->valid_mask & BMS_V_IDENTITY)) {
+        ESP_LOGI(TAG, "  peer '%s' hw=%s sw=%s layout=%uS",
+                 s->peer_name[0] ? s->peer_name : "?", s->hw_version,
+                 s->sw_version, s->cell_layout);
+    }
 
     /* Counters alongside the values. Without them a quiet link and a link
      * dropping every frame on CRC look identical from the console, and those
@@ -403,6 +422,10 @@ static void bms_worker(void *arg)
     int64_t         last_log_us  = 0;
 
     for (;;) {
+        /* NVS on behalf of bind()/unbind(), which run on the LVGL task. */
+        if (s_store_peer) { s_store_peer = false; peer_store(&s_bound_addr); }
+        if (s_erase_peer) { s_erase_peer = false; peer_store(NULL); }
+
         const size_t got = xStreamBufferReceive(s_rx, chunk, sizeof chunk,
                                                 pdMS_TO_TICKS(200));
         const int64_t now = esp_timer_get_time();
@@ -418,6 +441,10 @@ static void bms_worker(void *arg)
                 /* The parser knows nothing about the radio, so the transport
                  * stamps link quality on the way past. */
                 snap.rssi_dbm = s_rssi_dbm;
+                if (s_peer_name[0]) {
+                    snprintf(snap.peer_name, sizeof snap.peer_name, "%s",
+                             s_peer_name);
+                }
                 bms_model_publish(&snap);
                 bms_model_diag_bump(BMS_DIAG_FRAME_OK);
                 bms_model_set_link_state(BMS_LINK_LIVE);
@@ -578,14 +605,22 @@ void ble_bms_bind(const ble_addr_t *addr)
         reset_link_state();
         bms_model_reset();
         s_rssi_dbm = 0;
-        peer_store(NULL);
+        s_erase_peer = true;
         ESP_LOGI(TAG, "unbound");
         return;
     }
 
+    /* Rebinding while a link is up must tear the old one down, or the new
+     * address only takes effect after whatever random disconnect comes next —
+     * and until then the tab shows the OLD pack under the NEW name. */
+    if (s_conn != BLE_HS_CONN_HANDLE_NONE) {
+        ble_gap_terminate(s_conn, BLE_ERR_REM_USER_CONN_TERM);
+        reset_link_state();
+    }
+
     s_bound_addr = *addr;
     s_bound      = true;
-    peer_store(addr);
+    s_store_peer = true;   /* persisted by the worker, not here — see below */
     /* A previous pack's numbers must not linger under a new binding. */
     bms_model_reset();
     ESP_LOGI(TAG, "bound to %02x:%02x:%02x:%02x:%02x:%02x",

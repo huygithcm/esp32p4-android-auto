@@ -70,6 +70,12 @@ typedef enum {
 /* Smart-sleep countdown. Separate bit because it exists on BOTH layouts while
  * the emergency timer does not, so one mask could not describe both. */
 #define BMS_V_SLEEP_TIMER     (1u << 18)
+/* Peer name / firmware versions / detected layout. The UI asks for a device
+ * name and the backend used to answer with a constant, which hid the one
+ * thing worth seeing: whether the 24S or 32S layout was picked. A wrong pick
+ * still renders plausible values, so putting it on screen turns a
+ * serial-console check into something the rider can read. */
+#define BMS_V_IDENTITY        (1u << 19)
 
 typedef struct {
     /* ---- pack level ---------------------------------------------------- */
@@ -129,6 +135,13 @@ typedef struct {
     /* Smart-sleep countdown. 32-bit because the pack can be configured to
      * idle for a day and 86400 does not fit in 16 bits. */
     uint32_t sleep_timer_s;
+
+    /* ---- identity ------------------------------------------------------- */
+    char     peer_name[32];      /* advertised BLE name, e.g. "JK-B2A24S15P";
+                                    sized to the 31-byte BLE name limit        */
+    char     hw_version[12];     /* as reported by the device-info frame     */
+    char     sw_version[12];
+    uint8_t  cell_layout;        /* 24 or 32; 0 while undetected             */
 
     /* ---- provenance ----------------------------------------------------- */
     uint32_t valid_mask;

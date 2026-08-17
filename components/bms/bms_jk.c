@@ -160,6 +160,13 @@ static void decode_cell_info(jk_ctx_t *ctx, bms_snapshot_t *out)
     memset(out, 0, sizeof *out);
     out->driver_id = BMS_DRIVER_JK_BLE;
 
+    /* Carry identity through on every snapshot: the UI reads one struct, and
+     * the layout in particular is what a bring-up session needs to see. */
+    memcpy(out->hw_version, ctx->hw_version, sizeof out->hw_version - 1);
+    memcpy(out->sw_version, ctx->sw_version, sizeof out->sw_version - 1);
+    out->cell_layout = is32 ? 32 : 24;
+    out->valid_mask |= BMS_V_IDENTITY;
+
     /* ---- cells. A pack smaller than the frame's capacity reports 0 mV for
      * the unpopulated slots; those must stay invalid, not become 0 mV cells. */
     uint16_t vmin = 0xFFFF, vmax = 0;
