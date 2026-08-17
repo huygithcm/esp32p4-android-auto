@@ -28,6 +28,37 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-17 23:55 +07:00 - Claude - Poll gate was still open; initial states disagreed
+- Scope: user asked me to re-check the data behind the visibility gate. Wiring
+  `bms_ui_backend_set_active()` at 23:40 had NOT actually fixed it.
+- **Defect**: the two halves start from different values.
+  - `bms_view_create()` does `memset(&s, 0, sizeof s)` -> `s.active = false`.
+  - `ble_bms_client` had `s_active = true`.
+  - `bms_view_set_active()` early-returns on `s.active == active`.
+  The first `set_active(false)` therefore never left the frontend - it looked
+  redundant from there - while the backend kept polling at 1 Hz. On a unit
+  whose BMS tab is never opened it runs forever, exactly what the gate exists
+  to prevent. Reading either file alone suggests it works.
+- Fix: the backend now starts inactive. Codex's guard is untouched - it is
+  correct, it only needed the other end to share its starting point. Files:
+  `main/ble_bms_client.{c,h}`. Commit 624d401.
+- Connect and the device-info probe remain outside the gate, so the 24S/32S
+  layout is still detected while the tab is closed and opening it shows data
+  immediately instead of after a scan/connect/probe cycle.
+- Credit where due: `bms_view_destroy()` already released the gate
+  (`if (s.active) bms_ui_backend_set_active(false);`). Without that, closing
+  the screen with the tab open would have left the poll running.
+- Checks: host test **9 groups, 0 failures**; jc4880 image 0x438AE0,
+  **16% free**.
+- Status: complete
+- Handoff: this is the **second** defect from the two halves being built in
+  parallel against different assumptions - first "streams vs polls", now the
+  initial state - and neither was visible to a compiler or to either side's
+  own tests. Any further shared state between `bms_view` and
+  `ble_bms_client` is worth checking the same way: read both initial values
+  together, not each file on its own. Branch is 20 commits ahead of origin,
+  still not pushed.
+
 ### 2026-08-17 23:40 +07:00 - Claude - Merge upstream v1.3.7; wire the BMS visibility gate
 - Scope: user asked to take the publisher's fixes without losing the BMS work,
   then to walk the FE/BE flow end to end. Both done; the walk found a defect.
