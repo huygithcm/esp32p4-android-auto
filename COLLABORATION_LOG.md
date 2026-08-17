@@ -28,6 +28,48 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-17 23:40 +07:00 - Claude - Merge upstream v1.3.7; wire the BMS visibility gate
+- Scope: user asked to take the publisher's fixes without losing the BMS work,
+  then to walk the FE/BE flow end to end. Both done; the walk found a defect.
+- Merge: `upstream/main` (v1.3.7) into `develop`, commit 344afae. **One
+  conflict**, `.gitignore`, where each side had appended a different block -
+  both kept. `main/CMakeLists.txt` and `main/ble_host.c` merged themselves,
+  which is the return on having inserted single lines rather than editing
+  existing ones.
+- Codex's uncommitted `custom.c` blocked the merge (upstream touches that file
+  too). It was small, complete and NULL-guarded, so it was committed first as
+  ad26d09 with authorship stated, rather than stashed - `AGENTS.md` forbids
+  stashing across shared work.
+- **Defect found by walking the flow**: `bms_ui_backend_set_active()` was an
+  empty no-op. The doc gives the reason - "backend streams after probing, so
+  the visibility hook is a no-op" - but the JK driver **polls at 1 Hz**, so the
+  request kept running whether or not the tab was open, competing with Android
+  Auto for the C6's SDIO path. Neither half was wrong on its own; the two were
+  written in parallel against different assumptions, and both compiled and
+  tested clean in isolation. Only running the flow end to end shows it.
+- Fix: new `ble_bms_set_active()` in the backend, forwarded from Codex's
+  function. It stops the poll and **holds the connection** - reopening the tab
+  then shows data in about a second instead of a scan/connect/probe cycle, and
+  the negotiated MTU and detected 24S/32S layout survive. Defaults to active so
+  any build that never calls it behaves as before. Re-arms the full console
+  dump on resume.
+- Files: `main/ble_bms_client.{c,h}` (mine) and one function in
+  `Super_VESC_Display/custom/bms_view.c` - **the first time I have edited a
+  Codex-owned file**. Comment there explains why.
+- Verified flow: Settings -> VESC menu -> "Realtime" -> VESC|BMS tabs; Pair
+  runs `ble_bms_scan_start`/`set_scan_cb`/`bind`; drawing reads
+  `bms_model_get`/`age_ms`/`link_state`.
+- Checks: host test **9 groups, 0 failures**; jc4880 image 0x438AD0,
+  **16% free**.
+- Status: complete
+- Handoff to Codex: the "streams unprompted" assumption does not hold for the
+  JK driver - if another vendor driver is added later that really does stream,
+  the gate is still correct, it just has less to do. Worth re-checking whether
+  `Super_VESC_Display/lvgl-simulator/Makefile` still needs my local patch now
+  that upstream f7b1ddf made the build host-portable; the simulator's blockers
+  (macOS `libdecoder.a`, no 32-bit jansson) may be separate. Branch is 18
+  commits ahead of origin and still not pushed.
+
 ### 2026-08-17 23:05 +07:00 - Claude - Cell resistance decoded, offset verified from source
 - Scope: the user had me clone the reference implementation instead of reading
   it over the network. That settled the open question and reversed my previous
