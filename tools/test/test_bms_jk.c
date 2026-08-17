@@ -87,6 +87,11 @@ static void make_cell_frame(uint8_t *f, int shift, int ncell_populated)
     if (shift) put_u16(&f[112], (uint16_t)310);        /* 32S MOS temp  */
     else       put_u16(&f[134], (uint16_t)310);        /* 24S MOS temp  */
 
+    /* Alarm mask: u32 at 134+shift on 32S, u16 at 136 on 24S — the same
+     * region 24S uses for its MOS temperature, hence the split above. */
+    if (shift) put_u32(&f[134 + shift], 0x21);
+    else       put_u16(&f[136], 0x21);
+
     seal(f);
 }
 
@@ -116,6 +121,9 @@ static void check_common(const bms_snapshot_t *s, const char *tag)
     CHECK(s->cycle_capacity_mah == 123456, "cycle cap=%d", (int)s->cycle_capacity_mah);
     CHECK(s->balance_current_ma == 450, "bal current=%d", (int)s->balance_current_ma);
     CHECK(s->heater_on && s->heater_current_ma == 1200, "heater wrong");
+    CHECK((s->valid_mask & BMS_V_ALARMS) && s->alarm_raw == 0x21,
+          "alarm mask wrong: valid=%d raw=0x%x",
+          !!(s->valid_mask & BMS_V_ALARMS), (unsigned)s->alarm_raw);
     CHECK(s->valid_mask & BMS_V_WIRE_RES, "wire resistance must be decoded");
     CHECK(s->wire_res_mohm[0] == 3 && s->wire_res_mohm[1] == 5 &&
           s->wire_res_mohm[3] == 6, "wire res wrong: %u %u %u",

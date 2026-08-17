@@ -270,6 +270,15 @@ static void decode_cell_info(jk_ctx_t *ctx, bms_snapshot_t *out)
     out->temp_valid_mask = 0x3;
     out->valid_mask     |= BMS_V_TEMPS;
 
+    /* Alarm bitmask. The two layouts overload this region: on 32S it is a
+     * 32-bit error mask at 134+shift, while 24S keeps its MOS temperature
+     * there and a 16-bit mask at 136+shift. Verified against the reference,
+     * whose comment marks "166-169: errors bitmask" for 32S — 134+32. Without
+     * this the FE said "No active alarms" over a mask nobody had read. */
+    out->alarm_raw = is32 ? rd_u32(&b[134 + shift])
+                          : (uint32_t)rd_u16(&b[136 + shift]);
+    out->valid_mask |= BMS_V_ALARMS;
+
     /* MOS temperature sits before the shift on 32S and after it on 24S —
      * the one field where the layouts genuinely disagree rather than just
      * sliding. */
