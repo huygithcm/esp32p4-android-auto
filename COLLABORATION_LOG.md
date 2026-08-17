@@ -28,6 +28,62 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-18 00:05 +07:00 - Claude - Hardware bring-up test cases; diagnostics surfaced
+- Scope: user asked for test cases that establish the BMS path works on real
+  hardware. Added `docs/BMS_HARDWARE_BRINGUP.md` plus the one code change the
+  testing needs. Commit 3cb3a47.
+- The doc is nine cases ordered by dependency - discoverable, link/GATT,
+  layout, data arriving, data correct, absent fields, poll gate, persistence,
+  coexistence - each with a pass criterion and what to do on failure.
+- **The diagnostic counters were incremented and never read.** Added to the
+  periodic summary. A quiet link and a link failing every frame on CRC look
+  identical on the console without them, and they want opposite fixes.
+- Three cases carry the weight and are worth knowing before the session:
+  1. **Layout detection cannot be skipped.** A wrong 24S/32S pick still gives
+     plausible voltages, currents and temperatures; nothing downstream reveals
+     it.
+  2. **0x95 vs 0x96** for the cell frame is the one question documentation
+     could not settle. Both readings and the one-constant change are in the
+     doc. Decoding is not at risk either way - the parser dispatches on the
+     reply's type byte - only whether anything arrives.
+  3. **Comparing the per-cell dump against the JK phone app** is the only step
+     that shows values are correct rather than merely present.
+- Recorded a known weak point: the device-info string offsets (22 and 30) are
+  the least corroborated part of the driver. Every other offset was
+  cross-checked against the cloned reference; those two were not.
+- Checks: jc4880 image 0x438C80, **16% free**; host test unaffected.
+- Status: complete
+- **Shared-tree friction worth agreeing on:** a build failed with
+  `CMake Error: File can't be removed and still exist: vesc_ui\libvesc_ui.a`.
+  That is two `idf.py -B build_jc4880` runs colliding at link time, not a code
+  fault - it retried clean. `AGENTS.md` covers editing the same files but says
+  nothing about sharing a build directory. Suggest per-actor build dirs
+  (`build_jc4880_claude` / `_codex`); ccache is shared so the cost is disk, not
+  time. Not adopting that unilaterally - Codex should weigh in.
+- Handoff: `custom.c`, `custom.h`, `realtime_viewer.c` were dirty in Codex's
+  favour throughout (the dashboard BMS shortcut) and were not touched. Note the
+  shortcut opens the viewer directly on the BMS tab, so case 7 in the doc - the
+  poll gate - should be exercised through both entry points. Branch is 22
+  commits ahead of origin, still not pushed.
+
+### 2026-08-17 23:22 +07:00 - Codex - Dashboard BMS shortcut
+- Scope: added a `BMS` shortcut beside the existing `VESC` status action on
+  the default cockpit dashboard. It opens the realtime viewer directly on the
+  BMS tab; Back returns to the active dashboard. The regular realtime entry
+  still opens VESC first. Poll ownership follows the initially visible tab so
+  BMS polling starts/stops with BMS visibility.
+- Files: `Super_VESC_Display/custom/custom.c`,
+  `Super_VESC_Display/custom/custom.h`,
+  `Super_VESC_Display/custom/realtime_viewer.c`.
+- Checks: desktop simulator `mingw32-make -j8 default` passed; JC4880
+  `ninja -C build_jc4880` passed (image `0x438c80`, 16% app partition free);
+  `git diff --check` passed. Simulator launched from the main dashboard and is
+  still running for visual/interaction review.
+- Status: complete
+- Handoff: concurrent changes appeared during verification in
+  `main/ble_bms_client.c` and `docs/BMS_HARDWARE_BRINGUP.md`; they are owned by
+  another collaborator and were not edited or claimed here.
+
 ### 2026-08-17 23:55 +07:00 - Claude - Poll gate was still open; initial states disagreed
 - Scope: user asked me to re-check the data behind the visibility gate. Wiring
   `bms_ui_backend_set_active()` at 23:40 had NOT actually fixed it.
