@@ -28,6 +28,72 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-18 00:30 +07:00 - Claude - Audit findings fixed; identity published for the FE
+- Scope: acted on Codex's 23:29 integration audit. All five findings against
+  the backend were real; four are fixed in 9808ad8, one stays open.
+- Fixed:
+  1. **RX scratch buffer 256 < frame 300.** With the MTU we ourselves request,
+     every frame on a modern unit arrived whole, lost its tail in the copy and
+     died at the checksum. Now JK_FRAME_LEN+20. This one would have burned the
+     first hardware session while looking like an RF problem.
+  2. **Rebind never dropped the live link** - the old pack's numbers under the
+     new pack's name until a chance disconnect. bind() now terminates first.
+  3. **NVS commit on the LVGL task** via bind() from the pairing tap - the
+     documented freeze trap of this very repo. The worker owns the write now;
+     bind()/unbind() raise flags.
+  4. **Layout fallback**: any unrecognised hw string (including a garbled read
+     of the version field itself) used to be decoded as 24S with plausible
+     output. Only 8.x/9.x/10.x -> 24S and 11.x -> 32S are accepted now;
+     everything else stays UNKNOWN -> UNSUPPORTED with the string logged.
+- Open, unchanged: scan/initiator arbitration with the cadence client - that
+  is the ble_central_manager refactor, deliberately deferred while the third
+  slot is genuinely free on this vehicle.
+- Also in the same commit, for the FE: **the snapshot now carries identity**
+  (peer_name[32], hw_version, sw_version, cell_layout, behind BMS_V_IDENTITY).
+  The adapter renders a constant "JK BMS" today because the model offered
+  nothing better - mapping these in makes the layout visible on screen and
+  turns bring-up case 3 from a serial-console check into a glance. Suggested:
+    device_name <- peer_name;  model_name <- "%uS  hw %s" % (cell_layout, hw).
+  The two FE-side audit findings (sleep timer not rendered, "No active
+  alarms" shown when alarm validity is absent) are Codex's to take.
+- Checks: host test **9 groups, 0 failures**; jc4880 image 0x438EC0,
+  **16% free**. Note the build ran against Codex's concurrent dirty FE files
+  (custom.c/.h, realtime_viewer.c) and linked clean with them in place.
+- Status: complete
+- Handoff: branch is 25 commits ahead of origin, still not pushed. The
+  format-truncation -Werror that broke two builds tonight was pointing at a
+  real defect both times; worth keeping enabled.
+
+### 2026-08-17 23:29 +07:00 - Codex - Full BMS BE/FE integration audit
+- Scope: read the BLE session, JK parser/model, display contract/adapter,
+  pairing UI, tab lifecycle and shared BLE host end to end; identified what
+  the backend must supply before the real-pack path can be accepted.
+- Files: inspected `components/bms/**`, `main/ble_bms_client.{c,h}`,
+  `main/ble_host.c`, `main/ble_cadence_client.c`,
+  `components/vesc_ui/include/bms_ui_contract.h`,
+  `Super_VESC_Display/custom/bms_view.{c,h}`,
+  `Super_VESC_Display/custom/realtime_viewer.c`, BMS docs and host tests. No
+  BMS source was changed during this review.
+- Checks: JK parser host test passed all 9 groups with 0 failures; desktop
+  simulator build passed. The firmware build initially passed (image
+  `0x438c80`, 16% app partition free), then concurrent identity-field edits
+  appeared in the backend; retesting that current tree fails at
+  `main/ble_bms_client.c:244` because `-Werror=format-truncation` rejects
+  copying a possible 31-byte scan name into `s_peer_name[24]`. No serial
+  device was available, so no BLE/GATT or real-pack values were tested.
+- Status: observation
+- Handoff: blockers found before hardware acceptance: a 300-byte notification
+  can be truncated by the 256-byte RX temporary buffer; rebinding while a BMS
+  is connected does not tear down the old link; scan/connection slots are not
+  arbitrated with cadence; layout selection accepts every non-empty non-11.x
+  hardware string as 24S; NVS commit runs from the LVGL pairing callback. FE
+  also omits the decoded sleep timer and reports `No active alarms` when alarm
+  validity is absent. Add transport/session/adapter tests in addition to the
+  parser test, then execute `docs/BMS_HARDWARE_BRINGUP.md` against the user's
+  exact JK model and capture.
+  The concurrent identity patch is useful but still owned by its author and
+  must be finished/build-fixed before handoff; Codex did not edit those files.
+
 ### 2026-08-18 00:05 +07:00 - Claude - Hardware bring-up test cases; diagnostics surfaced
 - Scope: user asked for test cases that establish the BMS path works on real
   hardware. Added `docs/BMS_HARDWARE_BRINGUP.md` plus the one code change the
