@@ -51,7 +51,14 @@ bool ble_bms_is_connected(void);
  * second instead of a scan-and-connect cycle, and it keeps the negotiated
  * MTU and the detected layout.
  *
- * Defaults to active so a build that never calls this behaves as before. */
+ * Starts INACTIVE, matching the tab's own initial state. The two must agree:
+ * bms_view zeroes its struct on create, and its setter early-returns when the
+ * requested state already matches what it thinks is current. If the backend
+ * started active, that first set_active(false) would be swallowed by the
+ * guard and the poll would run forever with nobody watching — which is the
+ * failure this gate exists to prevent. Connecting and the device-info probe
+ * are NOT gated, so the layout is detected either way and opening the tab
+ * shows data immediately. */
 void ble_bms_set_active(bool active);
 
 #ifdef __cplusplus

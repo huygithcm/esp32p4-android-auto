@@ -57,7 +57,8 @@ static TaskHandle_t        s_worker;
 static jk_ctx_t            s_jk;
 static int8_t              s_rssi_dbm;
 static bool                s_logged_full;
-static bool                s_active = true;
+/* Starts false to match bms_view's own initial state — see the header. */
+static bool                s_active;
 
 /* The bound peer lives in a namespace of this module's own rather than in
  * dev_settings. It is backend state, dev_settings is an upstream file the FE
