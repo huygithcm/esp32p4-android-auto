@@ -469,6 +469,29 @@ static void cockpit_screen_init(lv_ui *ui)
     /* Disable screen panning — dashboard is a static layout. */
     lv_obj_clear_flag(ui->dashboard_Classic, LV_OBJ_FLAG_SCROLLABLE);
 
+    /* GUI Guider creates the ride-mode indicator in the top status bar.
+     * Override that generated layout here so regeneration cannot undo the
+     * product layout. The speed digits finish around y=284 and the speed
+     * segments start at y=320, leaving this pill directly below the speed.
+     * It remains a read-only indicator; drive-mode control stays in the
+     * VESC/Lisp input path to avoid accidental touches while riding. */
+    if (ui->dashboard_Classic_mode_text) {
+        lv_obj_t *mode = ui->dashboard_Classic_mode_text;
+        lv_obj_set_pos(mode, 330, 286);
+        lv_obj_set_size(mode, 140, 30);
+        lv_obj_set_style_text_align(mode, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_set_style_text_font(mode, &lv_font_montserratMedium_16,
+                                   LV_PART_MAIN);
+        lv_obj_set_style_text_color(mode, COCKPIT_ACCENT, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(mode, lv_color_hex(0x12181C), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(mode, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_radius(mode, 15, LV_PART_MAIN);
+        lv_obj_set_style_border_width(mode, 1, LV_PART_MAIN);
+        lv_obj_set_style_border_color(mode, lv_color_hex(0x4A5358),
+                                      LV_PART_MAIN);
+        lv_obj_set_style_pad_top(mode, 5, LV_PART_MAIN);
+    }
+
     // BLE status is shown via dashboard_status_bt text — the
     // ble_connected_img icon has been removed from the project.
     // Setup_scr_dashboard paints "BT" in bright accent by default;
