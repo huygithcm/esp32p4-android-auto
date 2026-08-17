@@ -75,6 +75,15 @@ static void make_cell_frame(uint8_t *f, int shift, int ncell_populated)
     put_u16(&f[204 + shift], (uint16_t)1200); /* heater 1.200 A         */
     if (shift) put_u16(&f[186 + shift], 90); /* 32S only: 90 s timer    */
 
+    /* Per-cell resistance sits INSIDE the cell region, so its base moves by
+     * only half the shift: 64 on 24S, 80 on 32S. */
+    {
+        const int res_base = 64 + shift / 2;
+        static const uint16_t mohm[4] = { 3, 5, 4, 6 };
+        for (int i = 0; i < ncell_populated; i++)
+            put_u16(&f[res_base + i * 2], mohm[i]);
+    }
+
     if (shift) put_u16(&f[112], (uint16_t)310);        /* 32S MOS temp  */
     else       put_u16(&f[134], (uint16_t)310);        /* 24S MOS temp  */
 
@@ -107,6 +116,12 @@ static void check_common(const bms_snapshot_t *s, const char *tag)
     CHECK(s->cycle_capacity_mah == 123456, "cycle cap=%d", (int)s->cycle_capacity_mah);
     CHECK(s->balance_current_ma == 450, "bal current=%d", (int)s->balance_current_ma);
     CHECK(s->heater_on && s->heater_current_ma == 1200, "heater wrong");
+    CHECK(s->valid_mask & BMS_V_WIRE_RES, "wire resistance must be decoded");
+    CHECK(s->wire_res_mohm[0] == 3 && s->wire_res_mohm[1] == 5 &&
+          s->wire_res_mohm[3] == 6, "wire res wrong: %u %u %u",
+          s->wire_res_mohm[0], s->wire_res_mohm[1], s->wire_res_mohm[3]);
+    CHECK(s->wire_res_valid_mask == 0xF, "wire mask=%x want f",
+          s->wire_res_valid_mask);
     CHECK(s->driver_id == BMS_DRIVER_JK_BLE, "driver_id wrong");
 }
 
@@ -186,36 +201,30 @@ int main(void)
     CHECK((s.valid_mask & BMS_V_TIMERS) && s.emergency_timer_s == 90,
           "32S timer wrong: %u", s.emergency_timer_s);
 
-    /* ---- wire resistance is parsed but NOT published ---------------------
-     * The settings-frame offsets came from a source that a later, better
-     * reading contradicts: the community decoder takes cell resistances out of
-     * the 0x02 cell frame, not 0x01. Until the real offset is established
-     * against hardware, the driver must publish nothing rather than plausible
-     * numbers. Flip these assertions when the offset is known. */
-    printf("[wire resistance withheld until verified]\n");
+    /* ---- the resistance base moves by HALF the shift on 32S --------------
+     * Inside the cell region the 32S delta is 16; only past the cell block
+     * does it become 32. Reading the resistances at the full shift would look
+     * perfectly reasonable and be 16 bytes wrong, so plant a decoy at that
+     * position and require the decoder does not pick it up. */
+    printf("[resistance base uses half the shift on 32S]\n");
+    jk_init(&ctx);
+    jk_set_proto(&ctx, JK_PROTO_02_32S);
+    make_cell_frame(f, 32, 4);
+    put_u16(&f[64 + 32], 999);          /* decoy at the full-shift offset */
+    seal(f);
+    CHECK(jk_feed(&ctx, f, sizeof f, &s) == JK_FEED_SNAPSHOT, "32S frame");
+    CHECK(s.wire_res_mohm[0] == 3,
+          "read resistance from the full-shift offset: got %u, want 3",
+          s.wire_res_mohm[0]);
+
+    /* An unpopulated cell must not gain a resistance reading either. */
+    printf("[resistance follows the cell mask]\n");
     jk_init(&ctx);
     jk_set_proto(&ctx, JK_PROTO_02_24S);
-    make_cell_frame(f, 0, 4);
-    jk_feed(&ctx, f, sizeof f, &s);
-    CHECK((s.valid_mask & BMS_V_WIRE_RES) == 0,
-          "no settings frame seen yet, wire resistance must be invalid");
-
-    uint8_t g[JK_FRAME_LEN];
-    memset(g, 0, sizeof g);
-    g[0] = 0x55; g[1] = 0xAA; g[2] = 0xEB; g[3] = 0x90;
-    g[4] = JK_FRAME_SETTINGS;
-    put_u16(&g[158 + 0 * 2], 3);
-    put_u16(&g[158 + 1 * 2], 5);
-    seal(g);
-    CHECK(jk_feed(&ctx, g, sizeof g, &s) == JK_FEED_SETTINGS,
-          "settings frame not recognised");
-
-    make_cell_frame(f, 0, 4);
+    make_cell_frame(f, 0, 2);           /* only two cells populated */
     CHECK(jk_feed(&ctx, f, sizeof f, &s) == JK_FEED_SNAPSHOT, "cell frame");
-    CHECK((s.valid_mask & BMS_V_WIRE_RES) == 0,
-          "wire resistance must stay UNPUBLISHED while its source is unverified");
-    CHECK(s.wire_res_valid_mask == 0,
-          "per-cell wire mask must be empty, got 0x%x", s.wire_res_valid_mask);
+    CHECK(s.wire_res_valid_mask == 0x3,
+          "wire mask must match the cell mask, got 0x%x", s.wire_res_valid_mask);
 
     /* ---- command framing ------------------------------------------------ */
     printf("[command frame]\n");

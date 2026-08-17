@@ -58,8 +58,6 @@ extern "C" {
 #define JK_CMD_DEVICE_INFO  0x97
 #define JK_CMD_CELL_INFO    0x96
 #define JK_CMD_TELEMETRY    0x95
-/* Settings frame (type 0x01) — the only place JK reports balance-lead
- * resistance; the cell frame does not carry it. */
 #define JK_CMD_SETTINGS     0x96
 
 /* Which byte layout the connected unit speaks. The two differ by a fixed 32
@@ -80,10 +78,6 @@ typedef struct {
     jk_proto_t proto;
     char       hw_version[16];
     char       sw_version[16];
-    /* Wire resistances arrive on the settings frame and are merged into every
-     * cell-info snapshot afterwards, so they live in the context. */
-    uint16_t   wire_res_mohm[BMS_MAX_CELLS];
-    uint32_t   wire_res_valid_mask;
 } jk_ctx_t;
 
 void jk_init(jk_ctx_t *ctx);
@@ -104,7 +98,7 @@ typedef enum {
     JK_FEED_NEED_MORE = 0,  /* fragment consumed, frame incomplete          */
     JK_FEED_SNAPSHOT,       /* a cell-info frame decoded into *out          */
     JK_FEED_DEVICE_INFO,    /* device-info frame parsed into ctx versions   */
-    JK_FEED_SETTINGS,       /* settings frame parsed; wire resistances kept */
+    JK_FEED_SETTINGS,       /* settings frame seen; nothing decoded from it */
     JK_FEED_IGNORED,        /* complete frame of a type we do not decode    */
     JK_FEED_CRC_ERROR,
 } jk_feed_result_t;

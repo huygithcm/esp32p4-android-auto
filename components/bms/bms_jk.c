@@ -16,9 +16,19 @@ static const uint8_t JK_PREAMBLE[4] = { 0x55, 0xAA, 0xEB, 0x90 };
  * is silent: the BMS ignores the frame and the link just never answers. */
 static const uint8_t JK_CMD_HDR[4]  = { 0xAA, 0x55, 0x90, 0xEB };
 
-/* The 32S layout carries 8 extra cells (16 bytes) but reserves 32, so every
- * field after the cell block sits 32 bytes further along. */
-#define JK_32S_SHIFT        32
+/* The reference implementation carries the 32S delta in TWO stages, and this
+ * is the single easiest thing to get wrong in the whole frame:
+ *
+ *     uint8_t offset = 0;  if (32S) offset = 16;
+ *     ... cell voltages and cell RESISTANCES use `offset` ...
+ *     offset = offset * 2;                 // now 32
+ *     ... everything after the cell block uses the doubled value ...
+ *
+ * So fields inside the cell region shift by 16 on 32S, and everything past it
+ * shifts by 32. Extrapolating the doubled value back over the resistances puts
+ * them 16 bytes out — with entirely plausible results. */
+#define JK_32S_SHIFT        32                 /* past the cell block  */
+#define JK_32S_SHIFT_CELLS  (JK_32S_SHIFT / 2) /* inside the cell block */
 
 #define JK_OFF_TYPE         4
 #define JK_OFF_CELLS        6
@@ -47,12 +57,10 @@ static const uint8_t JK_CMD_HDR[4]  = { 0xAA, 0x55, 0x90, 0xEB };
 #define JK_OFF_HEATER_MA    204
 #define JK_OFF_SLEEP_TIMER  238   /* u32, both layouts */
 
-/* Balance-lead resistances live in the SETTINGS frame (type 0x01), not with
- * the cell voltages. These are absolute offsets into that frame and are not
- * related to JK_32S_SHIFT — the two layouts simply place the block in
- * different spots. */
-#define JK_SET_OFF_RES_24S  158
-#define JK_SET_OFF_RES_32S  142
+/* Per-cell resistance array, inside the cell region: base 64 on 24S, 80 on
+ * 32S. Verified against research/_sources/esphome-jk-bms, whose own table
+ * comment reads "110  2  Resistance Cell 24" — exactly 64 + 23*2. */
+#define JK_OFF_CELL_RES     64
 
 static uint16_t rd_u16(const uint8_t *p) { return (uint16_t)(p[0] | ((uint16_t)p[1] << 8)); }
 static int16_t  rd_i16(const uint8_t *p) { return (int16_t)rd_u16(p); }
@@ -140,48 +148,6 @@ static void decode_device_info(jk_ctx_t *ctx)
     } else if (ctx->hw_version[0] != '\0') {
         ctx->proto = JK_PROTO_02_24S;
     }
-}
-
-/* Settings frame (0x01).
- *
- * This was written to pull per-cell balance-lead resistances out of here, on
- * one source's claim that the cell frame does not carry them. A later, more
- * authoritative reading contradicts that: the community implementation's cell
- * info decoder handles "cell voltages AND cell internal resistances" from the
- * 0x02 frame, so the block below is very likely reading configuration bytes
- * and calling them resistances.
- *
- * Rather than publish plausible nonsense, the values are parsed but NOT marked
- * valid, so the UI shows them as unavailable. The exact offset of the
- * resistance array inside the 0x02 frame could not be established from
- * documentation; ble_bms_client dumps the candidate region of the first cell
- * frame to the console so the first session with real hardware can settle it.
- * Once it is known, decode it in decode_cell_info and delete this. */
-static void decode_settings(jk_ctx_t *ctx)
-{
-    if (ctx->proto == JK_PROTO_UNKNOWN) return;
-
-    const int base = (ctx->proto == JK_PROTO_02_32S) ? JK_SET_OFF_RES_32S
-                                                     : JK_SET_OFF_RES_24S;
-    const int ncell = (ctx->proto == JK_PROTO_02_32S) ? JK_CELLS_32S
-                                                      : JK_CELLS_24S;
-
-    uint32_t mask = 0;
-    for (int i = 0; i < ncell && i < BMS_MAX_CELLS; i++) {
-        const int off = base + i * 2;
-        if (off + 1 >= JK_FRAME_LEN - 1) break;      /* never read the CRC */
-        const uint16_t milliohm = rd_u16(&ctx->buf[off]);
-        ctx->wire_res_mohm[i] = milliohm;
-        /* A cell slot that is not populated reads 0 here as well, so gate on
-         * the pack actually having that cell rather than on the value. The
-         * cell frame establishes the count; until one has been seen we take
-         * every entry and let the cell mask filter later. */
-        mask |= (1u << i);
-    }
-    /* Deliberately NOT stored as valid — see the note above. Keeping the read
-     * makes the eventual fix a one-line change instead of a rewrite. */
-    (void)mask;
-    ctx->wire_res_valid_mask = 0;
 }
 
 static void decode_cell_info(jk_ctx_t *ctx, bms_snapshot_t *out)
@@ -272,15 +238,22 @@ static void decode_cell_info(jk_ctx_t *ctx, bms_snapshot_t *out)
         out->valid_mask |= BMS_V_SLEEP_TIMER;
     }
 
-    /* Carry the wire resistances forward from the last settings frame. They
-     * change only when the installer rewires the pack, so refreshing them
-     * once per session is enough — but they must ride along on every
-     * snapshot, because the UI reads one struct. */
-    if (ctx->wire_res_valid_mask) {
-        memcpy(out->wire_res_mohm, ctx->wire_res_mohm,
-               sizeof out->wire_res_mohm);
-        out->wire_res_valid_mask = ctx->wire_res_valid_mask;
-        out->valid_mask |= BMS_V_WIRE_RES;
+    /* Per-cell balance-lead resistance, mOhm. Note the base uses the HALF
+     * shift — see the note by JK_32S_SHIFT_CELLS. Only cells that reported a
+     * voltage are marked valid: an unpopulated slot reads 0 here too, and a
+     * real 0.000 ohm must stay distinguishable from an absent one. */
+    {
+        const int res_base = JK_OFF_CELL_RES + (is32 ? JK_32S_SHIFT_CELLS : 0);
+        uint32_t rmask = 0;
+        for (int i = 0; i < ncell && i < BMS_MAX_CELLS; i++) {
+            if (!(out->cell_valid_mask & (1u << i))) continue;
+            out->wire_res_mohm[i] = rd_u16(&b[res_base + i * 2]);
+            rmask |= (1u << i);
+        }
+        if (rmask) {
+            out->wire_res_valid_mask = rmask;
+            out->valid_mask |= BMS_V_WIRE_RES;
+        }
     }
 
     /* ---- temperatures --------------------------------------------------- */
@@ -372,7 +345,9 @@ jk_feed_result_t jk_feed(jk_ctx_t *ctx, const uint8_t *data, size_t len,
             return JK_FEED_DEVICE_INFO;
 
         case JK_FRAME_SETTINGS:
-            decode_settings(ctx);
+            /* Nothing needed from it: resistances turned out to live in the
+             * cell frame after all. Recognised so the caller can tell a
+             * settings reply apart from an unknown frame type. */
             return JK_FEED_SETTINGS;
 
         case JK_FRAME_CELL_INFO:

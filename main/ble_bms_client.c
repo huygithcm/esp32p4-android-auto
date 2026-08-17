@@ -51,7 +51,6 @@ static uint16_t            s_cccd_handle;
 static bool                s_scanning;
 static bool                s_connecting;
 static bool                s_subscribed;
-static bool                s_have_settings;
 static ble_bms_scan_cb_t   s_scan_cb;
 static StreamBufferHandle_t s_rx;
 static TaskHandle_t        s_worker;
@@ -95,7 +94,6 @@ static void reset_link_state(void)
     s_chr_end_handle = 0;
     s_cccd_handle    = 0;
     s_subscribed     = false;
-    s_have_settings  = false;
     s_logged_full    = false;
     s_connecting     = false;
     jk_init(&s_jk);
@@ -368,32 +366,6 @@ static void log_snapshot(const bms_snapshot_t *s, bool full)
         ESP_LOGI(TAG, "  emergency timer %u s", s->emergency_timer_s);
     }
 
-    /* The per-cell resistance array is known to live somewhere in the 0x02
-     * frame but its offset could not be pinned down from documentation, so it
-     * is currently not published. It has to sit between the end of the cell
-     * voltages and the pack voltage at 118+shift — dump that window so the
-     * first real session can find it: with a live pack the resistances are
-     * small non-zero 16-bit values, one per cell, in a regular run. */
-    {
-        const uint8_t *raw = jk_frame_buf(&s_jk);
-        if (raw) {
-            const bool is32 = jk_get_proto(&s_jk) == JK_PROTO_02_32S;
-            const int  from = is32 ? 70 : 54;         /* just past the cells  */
-            const int  to   = is32 ? 150 : 118;       /* pack voltage         */
-            ESP_LOGI(TAG, "  -- unknown region [%d..%d) of the cell frame, "
-                          "resistances should be in here --", from, to);
-            for (int o = from; o < to; o += 16) {
-                char line[80];
-                int  n = 0;
-                for (int k = 0; k < 16 && o + k < to; k++) {
-                    n += snprintf(line + n, sizeof line - n, "%02X ",
-                                  raw[o + k]);
-                }
-                ESP_LOGI(TAG, "  %03d: %s", o, line);
-            }
-        }
-    }
-
     /* Cell-by-cell is what actually proves the layout. A 32-byte offset error
      * shifts every one of these and nothing else looks wrong. */
     for (unsigned i = 0; i < s->cell_count && i < BMS_MAX_CELLS; i++) {
@@ -449,11 +421,7 @@ static void bms_worker(void *arg)
                 }
                 break;
             case JK_FEED_SETTINGS:
-                /* Carries the balance-lead resistances. They only change when
-                 * the pack is rewired, so one fetch per session is enough. */
-                last_rx_us  = now;
-                s_have_settings = true;
-                ESP_LOGI(TAG, "settings frame decoded (wire resistances)");
+                last_rx_us = now;
                 break;
 
             case JK_FEED_DEVICE_INFO:
@@ -493,16 +461,6 @@ static void bms_worker(void *arg)
                 last_rx_us = now;
                 bms_model_diag_bump(BMS_DIAG_TIMEOUT);
                 send_cmd(JK_CMD_DEVICE_INFO);
-            }
-            continue;
-        }
-
-        /* Fetch the settings frame once per session, after the layout is
-         * known — decode_settings needs it to place the resistance block. */
-        if (!s_have_settings) {
-            if (now - last_poll_us >= (int64_t)POLL_INTERVAL_MS * 1000) {
-                last_poll_us = now;
-                send_cmd(JK_CMD_SETTINGS);
             }
             continue;
         }
