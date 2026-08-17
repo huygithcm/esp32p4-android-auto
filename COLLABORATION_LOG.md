@@ -28,6 +28,63 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-17 23:05 +07:00 - Claude - Cell resistance decoded, offset verified from source
+- Scope: the user had me clone the reference implementation instead of reading
+  it over the network. That settled the open question and reversed my previous
+  entry.
+- `research/_sources/esphome-jk-bms` (git-ignored, per the repo's convention
+  for reference clones).
+- **Resistances are in the 0x02 cell frame** at `i*2 + 64 + offset`, so the
+  23:12 decision to withhold them is undone. But the reason no summary got this
+  right is worth recording: **the 32S delta is applied in two stages.**
+
+        uint8_t offset = 0;  if (32S) offset = 16;
+        ... cell voltages AND cell resistances use offset ...
+        offset = offset * 2;              // now 32
+        ... everything past the cell block uses the doubled value ...
+
+  The resistance base is therefore **64 on 24S and 80 on 32S** - half the shift
+  every later field takes. Reusing the existing `JK_32S_SHIFT` (32) for it, the
+  obvious thing to do, lands 16 bytes out and still produces small, plausible
+  milliohm numbers. The source's own table comment fixes it beyond doubt:
+  `110  2  Resistance Cell 24`, exactly `64 + 23*2`.
+- Removed rather than left dormant: `decode_settings()`, the settings fetch
+  step in the session, and the hex dump of the "unknown region". All three
+  existed only to serve the wrong premise.
+- A resistance is published only for a cell that also reported a voltage.
+- **Every other offset in the driver was cross-checked against the source in
+  the same pass and all match**: 130/132 temps, 134 MOS(24S), 138 balance
+  current, 140 balancing, 141 SoC, 142/146 capacities, 150 cycles, 154 cycle
+  capacity, 158 SoH, 166/167 MOSFETs, 183 heater, 186 emergency, 204 heater
+  current, 238 sleep (u32).
+- Checks: host test **9 groups, PASSED, 0 failures**. Two are new and guard
+  this specifically: one plants a decoy at the full-shift position and fails if
+  the decoder reads it - the mistake a future tidy-up would most plausibly
+  introduce - and one checks the resistance mask follows the cell mask.
+  Firmware 0x437420 = 4,420,640 bytes, **16% free**. Committed as a891184.
+- Status: complete
+- Handoff to Codex: **wire resistance is available again** - the 23:12 note
+  telling you to keep it permanently unavailable is withdrawn. `BMS_V_WIRE_RES`
+  and `wire_res_valid_mask` are populated from every cell frame.
+  `Super_VESC_Display/custom/custom.c` was dirty in your favour throughout and
+  was not touched. Branch is 8 commits ahead of origin, still not pushed.
+
+### 2026-08-17 22:49 +07:00 - Codex - Move default dashboard mode below speed
+- Scope: move the read-only `MODE N` ride-mode indicator from the Cockpit
+  status bar to the center directly below the main speed digits.
+- Files: modified `Super_VESC_Display/custom/custom.c` only. The placement and
+  pill styling are applied in `cockpit_screen_init()` rather than generated
+  GUI-Guider source, so a later UI export will not overwrite them.
+- Layout: `(330,286)`, `140x30`, centered 16 px text, dark pill with accent
+  text; it fits between the speed digits and speed segments. It remains
+  non-clickable so drive-mode selection stays with the VESC/Lisp input path.
+- Checks: LVGL simulator builds and the default dashboard is running for visual
+  review (PID 24100). Full `build_jc4880` succeeds; image `0x437420` bytes,
+  **16% free**. `git diff --check` passes; existing backend edits were not
+  modified.
+- Status: complete; optional pixel adjustment pending user visual preference.
+- Handoff: none.
+
 ### 2026-08-17 22:43 +07:00 - Claude - Correct the wire-resistance source; withhold it
 - Scope: the user asked for a careful pass over the esphome-jk-bms protocol.
   It found a defect in my own work rather than confirming it.
