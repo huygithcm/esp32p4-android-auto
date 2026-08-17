@@ -42,6 +42,7 @@ typedef struct {
     lv_obj_t *forget;
     lv_obj_t *scan_modal;
     lv_obj_t *scan_list;
+    lv_obj_t *scan_connect;
     lv_obj_t *soc_arc;
     lv_obj_t *soc;
     lv_obj_t *pack;
@@ -77,6 +78,8 @@ static portMUX_TYPE s_scan_mux = portMUX_INITIALIZER_UNLOCKED;
 static bms_ui_scan_hit_t s_scan_hits[BMS_UI_MAX_SCAN_HITS];
 static volatile uint8_t s_scan_hit_count;
 static volatile bool s_scan_rebuild_pending;
+static ble_addr_t s_scan_selected_addr;
+static bool s_scan_has_selection;
 #endif
 
 static lv_obj_t *label_at(lv_obj_t *parent, const char *text, int x, int y,
@@ -113,6 +116,7 @@ static void scan_close(void)
         lv_obj_del_async(s.scan_modal);
         s.scan_modal = NULL;
         s.scan_list = NULL;
+        s.scan_connect = NULL;
     }
 }
 
@@ -122,18 +126,39 @@ static void scan_close_cb(lv_event_t *event)
     scan_close();
 }
 
+static void scan_rebuild_async(void *arg);
+
 static void scan_select_cb(lv_event_t *event)
 {
     uint8_t index = (uint8_t)(uintptr_t)lv_event_get_user_data(event);
-    ble_addr_t address;
     bool found = false;
     portENTER_CRITICAL(&s_scan_mux);
     if (index < s_scan_hit_count) {
-        address = s_scan_hits[index].addr;
+        s_scan_selected_addr = s_scan_hits[index].addr;
+        s_scan_has_selection = true;
         found = true;
     }
     portEXIT_CRITICAL(&s_scan_mux);
-    if (found) ble_bms_bind(&address);
+    if (!found) return;
+
+    if (s.scan_connect) lv_obj_clear_state(s.scan_connect, LV_STATE_DISABLED);
+    /* Rebuild so the selected device is visibly highlighted. Selection alone
+     * never connects; only the explicit CONNECT action below may call BE. */
+    scan_rebuild_async(NULL);
+}
+
+static void scan_connect_cb(lv_event_t *event)
+{
+    (void)event;
+    ble_addr_t address;
+    bool found;
+    portENTER_CRITICAL(&s_scan_mux);
+    found = s_scan_has_selection;
+    address = s_scan_selected_addr;
+    portEXIT_CRITICAL(&s_scan_mux);
+    if (!found) return;
+
+    ble_bms_bind(&address);
     scan_close();
 }
 
@@ -158,10 +183,20 @@ static void scan_rebuild_async(void *arg)
     }
 
     for (uint8_t i = 0; i < count; ++i) {
+        bool selected;
+        portENTER_CRITICAL(&s_scan_mux);
+        selected = s_scan_has_selection &&
+                   s_scan_selected_addr.type == hits[i].addr.type &&
+                   memcmp(s_scan_selected_addr.val, hits[i].addr.val,
+                          sizeof hits[i].addr.val) == 0;
+        portEXIT_CRITICAL(&s_scan_mux);
+
         lv_obj_t *row = lv_btn_create(s.scan_list);
         lv_obj_set_width(row, lv_pct(100));
         lv_obj_set_height(row, 42);
-        lv_obj_set_style_bg_color(row, lv_color_hex(COL_CARD), 0);
+        lv_obj_set_style_bg_color(row,
+                                  lv_color_hex(selected ? COL_CYAN : COL_CARD),
+                                  0);
         lv_obj_set_style_border_width(row, 0, 0);
         lv_obj_set_style_radius(row, 5, 0);
         lv_obj_add_event_cb(row, scan_select_cb, LV_EVENT_CLICKED,
@@ -216,7 +251,7 @@ static void pair_cb(lv_event_t *event)
 
     s.scan_modal = panel_create(s.root, 72, 22, 616, 310);
     lv_obj_move_foreground(s.scan_modal);
-    label_at(s.scan_modal, "Pair BMS", 16, 12,
+    label_at(s.scan_modal, "Scan and select BMS", 16, 12,
              &lv_font_montserratMedium_20, COL_TEXT);
     lv_obj_t *close = lv_btn_create(s.scan_modal);
     lv_obj_set_pos(close, 552, 8);
@@ -229,16 +264,30 @@ static void pair_cb(lv_event_t *event)
 
     s.scan_list = lv_obj_create(s.scan_modal);
     lv_obj_set_pos(s.scan_list, 12, 52);
-    lv_obj_set_size(s.scan_list, 592, 246);
+    lv_obj_set_size(s.scan_list, 592, 184);
     lv_obj_set_style_bg_color(s.scan_list, lv_color_hex(COL_BG), 0);
     lv_obj_set_style_border_width(s.scan_list, 0, 0);
     lv_obj_set_style_pad_all(s.scan_list, 8, 0);
     lv_obj_set_flex_flow(s.scan_list, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_scroll_dir(s.scan_list, LV_DIR_VER);
 
+    s.scan_connect = lv_btn_create(s.scan_modal);
+    lv_obj_set_pos(s.scan_connect, 404, 246);
+    lv_obj_set_size(s.scan_connect, 200, 48);
+    lv_obj_set_style_bg_color(s.scan_connect, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_radius(s.scan_connect, 6, 0);
+    lv_obj_add_state(s.scan_connect, LV_STATE_DISABLED);
+    lv_obj_t *connect_label = lv_label_create(s.scan_connect);
+    lv_label_set_text(connect_label, "CONNECT");
+    lv_obj_set_style_text_font(connect_label, &lv_font_montserratMedium_16, 0);
+    lv_obj_center(connect_label);
+    lv_obj_add_event_cb(s.scan_connect, scan_connect_cb, LV_EVENT_CLICKED, NULL);
+
     portENTER_CRITICAL(&s_scan_mux);
     s_scan_hit_count = 0;
     s_scan_rebuild_pending = false;
+    s_scan_has_selection = false;
+    memset(&s_scan_selected_addr, 0, sizeof s_scan_selected_addr);
     portEXIT_CRITICAL(&s_scan_mux);
     scan_rebuild_async(NULL);
     ble_bms_set_scan_cb(scan_result_cb);
@@ -615,8 +664,26 @@ bool bms_ui_backend_get_snapshot(bms_ui_snapshot_t *out)
         return true;
     }
 
-    snprintf(out->device_name, sizeof out->device_name,
-             source.driver_id == BMS_DRIVER_JK_BLE ? "JK BMS" : "BLE BMS");
+    /* Identity from the backend when it has one. The advertised name tells
+     * the rider WHICH pack this is; the layout/hw line puts the one bring-up
+     * fact that matters — did the driver pick 24S or 32S — on the screen
+     * instead of only on a serial console. Falls back to the old constants
+     * when no device-info frame has been decoded yet. */
+    if ((source.valid_mask & BMS_V_IDENTITY) && source.peer_name[0]) {
+        /* The model allows the full 31-byte BLE name; the display ABI caps at
+         * 23 visible chars. Real JK names run ~13 ("JK-BD6A24S10P"), so the
+         * explicit truncation is theoretical — widening the ABI is Codex's
+         * call, not something to slip into an adapter change. */
+        snprintf(out->device_name, sizeof out->device_name, "%.*s",
+                 (int)sizeof out->device_name - 1, source.peer_name);
+    } else {
+        snprintf(out->device_name, sizeof out->device_name,
+                 source.driver_id == BMS_DRIVER_JK_BLE ? "JK BMS" : "BLE BMS");
+    }
+    if ((source.valid_mask & BMS_V_IDENTITY) && source.cell_layout) {
+        snprintf(out->model_name, sizeof out->model_name, "%uS  hw %s",
+                 (unsigned)source.cell_layout, source.hw_version);
+    }
     snprintf(out->driver_name, sizeof out->driver_name,
              source.driver_id == BMS_DRIVER_JK_BLE ? "JK BLE" : "BLE");
     out->sample_seq = source.sample_seq;
@@ -659,6 +726,13 @@ bool bms_ui_backend_get_snapshot(bms_ui_snapshot_t *out)
         out->heater_current_ma = source.heater_current_ma;
         out->valid_mask |= BMS_UI_VALID_HEATER;
         if (source.heater_on) out->status_flags |= BMS_UI_FLAG_HEATER_ON;
+    }
+    /* Sleep is decoded on BOTH layouts and was simply never mapped — the
+     * contract had the field and the backend had the value, and the audit
+     * caught the missing line between them. */
+    if (source.valid_mask & BMS_V_SLEEP_TIMER) {
+        out->sleep_timer_s = source.sleep_timer_s;
+        out->valid_mask |= BMS_UI_VALID_SLEEP_TIMER;
     }
     if (source.valid_mask & BMS_V_TIMERS) {
         out->emergency_timer_s = source.emergency_timer_s;
@@ -819,7 +893,7 @@ void bms_view_create(lv_obj_t *parent)
     lv_obj_set_style_bg_color(s.pair, lv_color_hex(COL_CYAN), 0);
     lv_obj_set_style_radius(s.pair, 5, 0);
     lv_obj_t *pair_label = lv_label_create(s.pair);
-    lv_label_set_text(pair_label, "PAIR");
+    lv_label_set_text(pair_label, "SCAN");
     lv_obj_set_style_text_font(pair_label, &lv_font_montserratMedium_12, 0);
     lv_obj_center(pair_label);
     lv_obj_add_event_cb(s.pair, pair_cb, LV_EVENT_CLICKED, NULL);
