@@ -348,6 +348,16 @@ static void log_snapshot(const bms_snapshot_t *s, bool full)
              s->mos_temp_deci_c / 10, abs(s->mos_temp_deci_c % 10),
              s->chg_mos_on, s->dsg_mos_on, s->balancing, s->rssi_dbm);
 
+    /* Counters alongside the values. Without them a quiet link and a link
+     * dropping every frame on CRC look identical from the console, and those
+     * two need opposite fixes. */
+    const bms_diag_t *d = bms_model_diag();
+    ESP_LOGI(TAG, "  frames=%u crc_err=%u len_err=%u dropped=%u "
+                  "timeouts=%u reconnects=%u",
+             (unsigned)d->frames_ok, (unsigned)d->crc_errors,
+             (unsigned)d->length_errors, (unsigned)d->dropped_fragments,
+             (unsigned)d->timeouts, (unsigned)d->reconnects);
+
     if (!full) return;
 
     ESP_LOGI(TAG, "  soh %u.%u%%  cycles %u  remain %d mAh of %d  "
