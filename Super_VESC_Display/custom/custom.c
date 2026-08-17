@@ -48,6 +48,7 @@ static int s_units_epoch = 0;
 #include "vesc_battery_calc.h"
 #include "vesc_head2.h"
 #include "app_fs.h"
+#include "vesc_can/comm_can.h"
 #endif
 
 int cruise_active = 0;
@@ -223,6 +224,8 @@ static lv_obj_t *settings_battery_calc_mode_dropdown = NULL;
 static lv_obj_t *settings_battery_calc_mode_label = NULL;
 static lv_obj_t *settings_show_fps_switch = NULL;
 static lv_obj_t *settings_show_fps_label = NULL;
+static lv_obj_t *settings_brightness_gesture_switch = NULL;
+static lv_obj_t *settings_brightness_gesture_label = NULL;
 static lv_obj_t *settings_demo_mode_switch = NULL;
 static lv_obj_t *settings_demo_mode_label = NULL;
 static lv_obj_t *settings_vesc_emulator_switch = NULL;
@@ -865,12 +868,7 @@ static void cockpit_range(float range_distance)
  * default. vesc_head2_get_temps() is device-only — the simulator stays single. */
 static bool dashboard_head2_temps(float *fet, float *motor)
 {
-#ifdef LV_REALDEVICE
-    return vesc_head2_get_temps(fet, motor);
-#else
-    (void)fet; (void)motor;
-    return false;
-#endif
+    return settings_wrapper_head2_temps(fet, motor);
 }
 
 static void dashboard_temps_apply_layout(bool dual)
@@ -1235,6 +1233,17 @@ static void cockpit_music_text(const char *text)
     (void)text;
 }
 
+/* The dashboard's invisible full-screen brightness drag slider. HIDDEN also
+ * takes it out of LVGL's hit-testing, so hiding is what disables the gesture —
+ * the slider is already invisible (styled bg_opa 0 in cockpit_screen_init). */
+static void cockpit_brightness_gesture(bool enabled)
+{
+    lv_obj_t *sl = guider_ui.dashboard_Classic_brightness_slider;
+    if (!sl) return;
+    if (enabled) lv_obj_clear_flag(sl, LV_OBJ_FLAG_HIDDEN);
+    else         lv_obj_add_flag(sl, LV_OBJ_FLAG_HIDDEN);
+}
+
 // ============================================================================
 // SETTINGS UI IMPLEMENTATION
 // ============================================================================
@@ -1275,6 +1284,11 @@ static void debounced_commit_schedule(debounced_commit_t *d,
 static debounced_commit_t s_target_id_commit;
 static debounced_commit_t s_second_head_id_commit;
 static debounced_commit_t s_brightness_commit;
+/* Separate from s_brightness_commit on purpose: debounced_commit_schedule()
+ * overwrites the pending persist fn, so sharing one slot between the
+ * brightness VALUE and the gesture FLAG would drop whichever write was armed
+ * first. */
+static debounced_commit_t s_brightness_gesture_commit;
 static debounced_commit_t s_controller_id_commit;
 static debounced_commit_t s_battery_capacity_commit;
 static debounced_commit_t s_power_max_commit;
@@ -1730,6 +1744,20 @@ static void show_fps_switch_event_cb(lv_event_t *e) {
     }
 }
 */
+
+// Event handler for the Brightness gesture switch. Volatile setter + debounced
+// commit (an nvs_commit straight from the LVGL thread freezes the screen), and
+// the refresh pushes the new state into whichever theme is built right now.
+static void brightness_gesture_switch_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        bool checked = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
+        settings_wrapper_set_brightness_gesture_enabled_volatile(checked);
+        debounced_commit_schedule(&s_brightness_gesture_commit,
+                                  settings_wrapper_persist_brightness_gesture_enabled);
+        dashboard_brightness_gesture_refresh();
+    }
+}
 
 // Event handler for Demo mode switch
 static void demo_mode_switch_event_cb(lv_event_t *e) {
@@ -2223,6 +2251,7 @@ static void reset_button_event_cb(lv_event_t *e) {
         settings_wrapper_set_dashboard_theme(0); // Cockpit
         settings_wrapper_set_splash_loops(1);     // play boot splash once
         settings_wrapper_set_display_flip(false); // normal orientation
+        settings_wrapper_set_brightness_gesture_enabled(true);
 
         // Update UI elements
         if (s_target_id_field.label)        num_field_set(&s_target_id_field, 10);
@@ -2242,7 +2271,13 @@ static void reset_button_event_cb(lv_event_t *e) {
         if (settings_display_flip_switch) {
             lv_obj_clear_state(settings_display_flip_switch, LV_STATE_CHECKED);
         }
+        if (settings_brightness_gesture_switch) {
+            lv_obj_add_state(settings_brightness_gesture_switch, LV_STATE_CHECKED);
+        }
         dashboard_theme_set(0);   // live-switch back to cockpit
+        /* dashboard_theme_set no-ops when cockpit is already active, so push the
+         * restored gesture state in explicitly. */
+        dashboard_brightness_gesture_refresh();
         if (settings_brightness_slider) {
             lv_slider_set_value(settings_brightness_slider, 80, LV_ANIM_ON);
         }
@@ -2293,6 +2328,52 @@ static void pas_open_btn_event_cb(lv_event_t *e) {
     (void)e;
     show_pas_settings();   /* opens the on-device PAS screen (custom/pas_screen.c) */
 }
+
+#ifdef LV_REALDEVICE
+/* CAN bus health readout next to the firmware-version block. The label is
+ * (re)created by every settings_ui_init; the 1 Hz timer is global and gated
+ * on the settings screen being active — same DIRECT-render rule as
+ * vesc_ui_updater (never write widgets on an inactive screen; it also keeps
+ * the timer off the dangling label after the screen was deleted, since the
+ * pointer is refreshed on each rebuild before Settings can be shown again). */
+static lv_obj_t   *settings_can_health_label = NULL;
+static lv_timer_t *s_can_health_tmr = NULL;
+/* Dedup cache — set_text invalidates unconditionally, so skip no-op rewrites.
+ * Reset to the sentinel whenever the label is (re)created (settings_ui_init),
+ * otherwise a rebuilt screen would keep an empty label until the count moves. */
+static uint32_t s_can_health_last_err = UINT32_MAX;
+static uint32_t s_can_health_last_rec = UINT32_MAX;
+
+static void settings_can_health_refresh(void)
+{
+    if (!settings_can_health_label) return;
+
+    uint32_t err = 0, rec = 0;
+    char buf[64];
+    if (comm_can_get_bus_health(&err, &rec)) {
+        if (err == s_can_health_last_err && rec == s_can_health_last_rec) return;
+        s_can_health_last_err = err; s_can_health_last_rec = rec;
+        if (rec) {
+            snprintf(buf, sizeof(buf), "CAN errors: %lu\nBus-off recoveries: %lu",
+                     (unsigned long)err, (unsigned long)rec);
+        } else {
+            snprintf(buf, sizeof(buf), "CAN errors: %lu", (unsigned long)err);
+        }
+    } else {
+        if (s_can_health_last_err == 0 && s_can_health_last_rec == 0) return;
+        s_can_health_last_err = 0; s_can_health_last_rec = 0;
+        snprintf(buf, sizeof(buf), "CAN errors: (bus down)");
+    }
+    lv_label_set_text(settings_can_health_label, buf);
+}
+
+static void settings_can_health_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    if (lv_scr_act() != guider_ui.settings) return;
+    settings_can_health_refresh();
+}
+#endif /* LV_REALDEVICE */
 
 void settings_ui_init(lv_ui *ui) {
     if (!ui || !ui->settings) {
@@ -2824,6 +2905,22 @@ void settings_ui_init(lv_ui *ui) {
     y_pos += spacing;
     */
 
+    // ========== Brightness Gesture Switch ==========
+    settings_brightness_gesture_label =
+        settings_heading_create(ui->settings, y_pos, "Brightness gesture");
+
+    settings_brightness_gesture_switch = lv_switch_create(ui->settings);
+    lv_obj_set_pos(settings_brightness_gesture_switch, 730, y_pos + 15);
+    lv_obj_set_size(settings_brightness_gesture_switch, 60, 30);
+    if (settings_wrapper_get_brightness_gesture_enabled()) {
+        lv_obj_add_state(settings_brightness_gesture_switch, LV_STATE_CHECKED);
+    }
+    lv_obj_set_style_bg_color(settings_brightness_gesture_switch, lv_color_hex(0x2a3440), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(settings_brightness_gesture_switch, lv_color_hex(0x00a9ff), LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_add_event_cb(settings_brightness_gesture_switch, brightness_gesture_switch_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    y_pos += SETTINGS_ROW_H;
+
     // ========== Demo Mode Switch ==========
     settings_demo_mode_label = settings_heading_create(ui->settings, y_pos, "Demo mode");
 
@@ -3195,6 +3292,20 @@ void settings_ui_init(lv_ui *ui) {
     lv_obj_set_style_text_color(fw_label, lv_color_hex(0xB6FF2E), 0);
     lv_obj_set_style_text_font(fw_label, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_line_space(fw_label, 4, 0);
+
+    /* CAN bus health, next to the version block. Refreshed live by
+     * settings_can_health_timer_cb while Settings is the active screen —
+     * the counter is exactly what you watch when hunting bus trouble. */
+    settings_can_health_label = lv_label_create(ui->settings);
+    lv_obj_set_pos(settings_can_health_label, 380, y_pos);
+    lv_obj_set_style_text_color(settings_can_health_label, lv_color_hex(0xB6FF2E), 0);
+    lv_obj_set_style_text_font(settings_can_health_label, &lv_font_montserrat_20, 0);
+    s_can_health_last_err = UINT32_MAX;   /* fresh label — force first paint */
+    s_can_health_last_rec = UINT32_MAX;
+    settings_can_health_refresh();
+    if (!s_can_health_tmr) {
+        s_can_health_tmr = lv_timer_create(settings_can_health_timer_cb, 1000, NULL);
+    }
 #endif
 }
 
@@ -3264,6 +3375,7 @@ static const dashboard_theme_ops_t cockpit_ops = {
     .navigation_icon       = cockpit_navigation_icon,
     .navigation_text       = cockpit_navigation_text,
     .music_text            = cockpit_music_text,
+    .brightness_gesture    = cockpit_brightness_gesture,
 };
 
 static const dashboard_theme_t cockpit_theme = {

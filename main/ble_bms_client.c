@@ -57,6 +57,7 @@ static TaskHandle_t        s_worker;
 static jk_ctx_t            s_jk;
 static int8_t              s_rssi_dbm;
 static bool                s_logged_full;
+static bool                s_active = true;
 
 /* The bound peer lives in a namespace of this module's own rather than in
  * dev_settings. It is backend state, dev_settings is an upstream file the FE
@@ -465,6 +466,9 @@ static void bms_worker(void *arg)
             continue;
         }
 
+        /* Nobody is looking: hold the link, stop asking. */
+        if (!s_active) continue;
+
         if (now - last_poll_us >= (int64_t)POLL_INTERVAL_MS * 1000) {
             last_poll_us = now;
             send_cmd(JK_CMD_CELL_INFO);
@@ -583,6 +587,16 @@ bool ble_bms_get_bound(ble_addr_t *out)
 {
     if (s_bound && out) *out = s_bound_addr;
     return s_bound;
+}
+
+void ble_bms_set_active(bool active)
+{
+    if (s_active == active) return;
+    s_active = active;
+    ESP_LOGI(TAG, "polling %s", active ? "resumed" : "paused");
+    /* Re-dump on the next frame after a pause: the values will have moved on
+     * and the full dump is what the bring-up session reads. */
+    if (active) s_logged_full = false;
 }
 
 bool ble_bms_is_connected(void)

@@ -707,7 +707,12 @@ bool bms_ui_backend_get_snapshot(bms_ui_snapshot_t *out)
 
 void bms_ui_backend_set_active(bool active)
 {
-    (void)active;
+    /* This was a no-op on the assumption that the backend streams unprompted
+     * once probing finishes. It does not — the JK driver polls, so without
+     * this the 1 Hz request kept running whether or not anyone had the tab
+     * open, competing with Android Auto for the C6's SDIO link. The backend
+     * holds the connection either way; only the polling stops. */
+    ble_bms_set_active(active);
 }
 #else
 bool bms_ui_backend_get_snapshot(bms_ui_snapshot_t *out)

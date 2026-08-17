@@ -42,6 +42,18 @@ bool ble_bms_get_bound(ble_addr_t *out);
 
 bool ble_bms_is_connected(void);
 
+/* Visibility gate. The BMS tab calls this as it is shown and hidden.
+ *
+ * Inactive stops the cell-info poll but KEEPS the link up: the BLE radio is
+ * on the C6, sharing its SDIO path with Wi-Fi, so a 1 Hz poll running behind
+ * an Android Auto video stream costs bandwidth the video needs. Holding the
+ * connection rather than dropping it means reopening the tab shows data in a
+ * second instead of a scan-and-connect cycle, and it keeps the negotiated
+ * MTU and the detected layout.
+ *
+ * Defaults to active so a build that never calls this behaves as before. */
+void ble_bms_set_active(bool active);
+
 #ifdef __cplusplus
 }
 #endif

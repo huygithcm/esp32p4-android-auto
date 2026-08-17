@@ -75,3 +75,8 @@ eim_config.toml
 # OS file-manager droppings.
 Thumbs.db
 desktop.ini
+
+# GUI Guider's own backup copies of the project file — hand-made snapshots
+# taken before big layout edits. The live Super_VESC_Display.guiguider IS
+# tracked; these are multi-MB binary duplicates of it.
+Super_VESC_Display/*.guiguider.*.bak
