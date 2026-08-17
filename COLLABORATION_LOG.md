@@ -28,6 +28,55 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-18 00:55 +07:00 - Claude - FE-requested flows wired through the adapter
+- Scope: user asked me to read the FE's current code and wire in what it asks
+  for. Three joins were missing, each one a field the FE already renders and
+  the backend already carries, with no line between them. Commits a9c8977 and
+  8e4378f.
+- Wired:
+  1. **Identity**: `device_name` <- advertised peer name (was the constant
+     "JK BMS"), `model_name` <- "<N>S hw <ver>". The detected 24S/32S layout is
+     now on the screen - bring-up case 3 no longer needs a serial console.
+     Truncation to the ABI's 23 chars is explicit (`%.*s`); real JK names run
+     ~13. Widening the ABI field to the 31-byte BLE limit is Codex's call.
+  2. **Sleep timer**: decoded by the BE, present in the ABI, never joined.
+  3. **Alarms - the root cause was BE-side.** The FE's "No active alarms" was
+     rendered over a mask nothing ever read: the parser did not decode alarms
+     at all. Now it does, and this is the THIRD layout trap in this frame: 32S
+     carries a u32 mask at 134+shift where 24S keeps its MOS temperature, with
+     the 24S mask at 136+shift as u16. The region is overloaded, not shifted.
+     Verified against the reference ("166-169: errors bitmask" = 134+32); the
+     test plants 0x21 per layout and fails if the two are conflated.
+- Authorship: a9c8977 is mine (parser+test). 8e4378f is mixed and says so in
+  the message - Codex's pairing-modal rework (select highlights, explicit
+  CONNECT binds) plus my adapter joins, committed together because they landed
+  in the same file; neither half claims the other.
+- Checks: host test **9 groups, 0 failures** (alarm assertions added to both
+  layout groups); jc4880 image 0x439120, **16% free**.
+- Status: complete
+- Handoff: left dirty for Codex - `custom.c/.h`, `realtime_viewer.c`,
+  `docs/BMS_FE_BE_CONTRACT.md`. On-screen rendering of the newly joined fields
+  (sleep timer row, alarm text from real masks, identity in the header) is
+  FE's to style; the data is flowing. Branch is 27 ahead, not pushed.
+
+### 2026-08-17 23:39 +07:00 - Codex - Explicit SCAN/select/CONNECT BMS flow
+- Scope: changed pairing UX so scanning, selecting and connecting are three
+  distinct actions. The header action is now `SCAN`; selecting a result only
+  highlights and stores it in FE state; the disabled `CONNECT` button becomes
+  enabled after selection and is the only action that calls the current BE
+  bind/connect API.
+- Files: `Super_VESC_Display/custom/bms_view.c`,
+  `docs/BMS_FE_BE_CONTRACT.md`.
+- Checks: desktop simulator `mingw32-make -j8 default` passed; JC4880
+  `ninja -C build_jc4880` passed (image `0x439070`, 16% app partition free);
+  `git diff --check` passed.
+- Status: complete
+- Handoff: the documented final BE contract must split an accepted connect
+  request from successful/persisted binding, report scan completion/errors,
+  expose WAIT_SLOT/progress/error states, and arbitrate the global GAP scan and
+  connection slot with cadence. The current `ble_bms_bind()` is retained as a
+  temporary implementation behind the explicit CONNECT button.
+
 ### 2026-08-18 00:30 +07:00 - Claude - Audit findings fixed; identity published for the FE
 - Scope: acted on Codex's 23:29 integration audit. All five findings against
   the backend were real; four are fixed in 9808ad8, one stays open.
