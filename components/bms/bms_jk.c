@@ -141,13 +141,23 @@ static void decode_device_info(jk_ctx_t *ctx)
 
     if (ctx->proto != JK_PROTO_UNKNOWN) return;   /* user override wins */
 
-    /* Hardware 11.x and newer speak the 32S layout; 8.x through 10.x speak
-     * 24S. The string is like "11.XW" or "10.xw". */
-    if (ctx->hw_version[0] == '1' && ctx->hw_version[1] == '1') {
+    /* Hardware 11.x speaks the 32S layout; 8.x, 9.x and 10.x speak 24S. The
+     * string looks like "11.XW" or "10.xw".
+     *
+     * Only those known families are accepted. The previous catch-all sent
+     * every non-empty string down the 24S path — including a garbled read of
+     * this very field, which then decoded cell data into numbers that look
+     * entirely reasonable. UNSUPPORTED on screen with the raw string in the
+     * log can be diagnosed; plausible wrong values cannot. */
+    const char *hw = ctx->hw_version;
+    if (hw[0] == '1' && hw[1] == '1') {
         ctx->proto = JK_PROTO_02_32S;
-    } else if (ctx->hw_version[0] != '\0') {
+    } else if (hw[0] == '1' && hw[1] == '0') {
+        ctx->proto = JK_PROTO_02_24S;
+    } else if ((hw[0] == '8' || hw[0] == '9') && hw[1] == '.') {
         ctx->proto = JK_PROTO_02_24S;
     }
+    /* else: stays UNKNOWN — jk_feed will refuse cell frames. */
 }
 
 static void decode_cell_info(jk_ctx_t *ctx, bms_snapshot_t *out)

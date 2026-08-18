@@ -291,7 +291,16 @@ static void pair_cb(lv_event_t *event)
     portEXIT_CRITICAL(&s_scan_mux);
     scan_rebuild_async(NULL);
     ble_bms_set_scan_cb(scan_result_cb);
-    ble_bms_scan_start();
+    /* A refused scan has to say so. NimBLE runs one initiator at a time, so a
+     * connect already in flight blocks the scanner, and an empty list looks
+     * exactly like "no packs nearby", which sends the rider hunting for an
+     * antenna fault that is not there. */
+    if (!ble_bms_scan_start() && s.scan_list) {
+        lv_obj_clean(s.scan_list);
+        lv_obj_t *label = lv_label_create(s.scan_list);
+        lv_label_set_text(label, "Busy connecting - close and retry");
+        lv_obj_set_style_text_color(label, lv_color_hex(COL_WARN), 0);
+    }
 }
 
 static void forget_cb(lv_event_t *event)

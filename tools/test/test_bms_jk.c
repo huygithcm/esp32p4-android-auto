@@ -234,6 +234,49 @@ int main(void)
     CHECK(s.wire_res_valid_mask == 0x3,
           "wire mask must match the cell mask, got 0x%x", s.wire_res_valid_mask);
 
+    /* ---- layout is only chosen for KNOWN hardware families ---------------
+     * The catch-all this replaces accepted any non-empty string as 24S, so a
+     * garbled version field decoded cell data into plausible nonsense. This
+     * group exists because that regression shipped once already, having been
+     * reported fixed on the strength of a script's print statement rather
+     * than a check. */
+    printf("[layout accepted only for known hw families]\n");
+    {
+        static const struct { const char *hw; jk_proto_t want; } cases[] = {
+            { "11.XW", JK_PROTO_02_32S },
+            { "11.U",  JK_PROTO_02_32S },
+            { "10.xw", JK_PROTO_02_24S },
+            { "9.01",  JK_PROTO_02_24S },
+            { "8.2",   JK_PROTO_02_24S },
+            { "\xff\xfe garbage", JK_PROTO_UNKNOWN },
+            { "V2.1",  JK_PROTO_UNKNOWN },   /* plausible but unrecognised */
+            { "",      JK_PROTO_UNKNOWN },
+        };
+        for (unsigned k = 0; k < sizeof cases / sizeof cases[0]; k++) {
+            uint8_t d[JK_FRAME_LEN];
+            memset(d, 0, sizeof d);
+            d[0] = 0x55; d[1] = 0xAA; d[2] = 0xEB; d[3] = 0x90;
+            d[4] = JK_FRAME_DEVICE_INFO;
+            memcpy(&d[22], cases[k].hw, strlen(cases[k].hw));
+            seal(d);
+
+            jk_init(&ctx);
+            CHECK(jk_feed(&ctx, d, sizeof d, &s) == JK_FEED_DEVICE_INFO,
+                  "device info '%s' not parsed", cases[k].hw);
+            CHECK(jk_get_proto(&ctx) == cases[k].want,
+                  "hw '%s' -> layout %d, want %d", cases[k].hw,
+                  (int)jk_get_proto(&ctx), (int)cases[k].want);
+
+            /* An unknown layout must also refuse to decode cell data. */
+            if (cases[k].want == JK_PROTO_UNKNOWN) {
+                make_cell_frame(f, 0, 4);
+                CHECK(jk_feed(&ctx, f, sizeof f, &s) == JK_FEED_IGNORED,
+                      "hw '%s': decoded cells despite unknown layout",
+                      cases[k].hw);
+            }
+        }
+    }
+
     /* ---- command framing ------------------------------------------------ */
     printf("[command frame]\n");
     uint8_t cmd[JK_CMD_LEN];

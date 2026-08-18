@@ -62,6 +62,7 @@ static char                s_peer_name[32];
  * task when the user taps a scan hit, and an nvs_commit there is the exact
  * freeze this project's CLAUDE.md warns about. The worker owns NVS instead. */
 static volatile bool       s_store_peer;
+static bool                s_peer_persisted;
 static volatile bool       s_erase_peer;
 /* Starts false to match bms_view's own initial state — see the header. */
 static bool                s_active;
@@ -465,6 +466,16 @@ static void bms_worker(void *arg)
 
             case JK_FEED_DEVICE_INFO:
                 last_rx_us = now;
+                /* First proof the bound address is really a JK we can read:
+                 * it answered device-info AND we recognise its layout. Only
+                 * now is it worth surviving a reboot — persisting at bind
+                 * time meant a mistyped tap on a neighbour's pack came back
+                 * on every boot. */
+                if (!s_peer_persisted && s_bound &&
+                    jk_get_proto(&s_jk) != JK_PROTO_UNKNOWN) {
+                    s_peer_persisted = true;
+                    s_store_peer     = true;
+                }
                 if (jk_get_proto(&s_jk) == JK_PROTO_UNKNOWN) {
                     ESP_LOGW(TAG, "unrecognised JK hw '%s' — cannot pick layout",
                              s_jk.hw_version);
@@ -565,9 +576,20 @@ void ble_bms_on_ble_sync(uint8_t own_addr_type)
 
 void ble_bms_set_scan_cb(ble_bms_scan_cb_t cb) { s_scan_cb = cb; }
 
-void ble_bms_scan_start(void)
+bool ble_bms_scan_is_active(void) { return s_scanning; }
+
+bool ble_bms_scan_start(void)
 {
-    if (!s_inited || !s_synced || s_scanning) return;
+    if (!s_inited || !s_synced) return false;
+    if (s_scanning) return true;          /* already running is not a failure */
+    /* NimBLE allows one initiator at a time and a pending connect blocks the
+     * scanner. Say so rather than failing silently: the UI showed an empty
+     * device list forever with no way to tell "none nearby" from "we never
+     * looked". */
+    if (s_connecting) {
+        ESP_LOGW(TAG, "scan refused: a connect is already in flight");
+        return false;
+    }
 
     struct ble_gap_disc_params dp = { 0 };
     dp.passive          = 0;   /* active: JK puts its name in the scan rsp */
@@ -579,9 +601,10 @@ void ble_bms_scan_start(void)
         s_scanning = true;
         bms_model_set_link_state(BMS_LINK_SCANNING);
         ESP_LOGI(TAG, "scanning for JK BMS (%d ms)", SCAN_DURATION_MS);
-    } else {
-        ESP_LOGW(TAG, "ble_gap_disc rc=%d", rc);
+        return true;
     }
+    ESP_LOGW(TAG, "ble_gap_disc rc=%d", rc);
+    return false;
 }
 
 void ble_bms_scan_stop(void)
@@ -618,9 +641,11 @@ void ble_bms_bind(const ble_addr_t *addr)
         reset_link_state();
     }
 
-    s_bound_addr = *addr;
-    s_bound      = true;
-    s_store_peer = true;   /* persisted by the worker, not here — see below */
+    s_bound_addr    = *addr;
+    s_bound         = true;
+    s_peer_persisted = false;
+    /* NOT persisted yet: see the device-info branch in the worker. A peer
+     * that never answers must not survive a reboot. */
     /* A previous pack's numbers must not linger under a new binding. */
     bms_model_reset();
     ESP_LOGI(TAG, "bound to %02x:%02x:%02x:%02x:%02x:%02x",

@@ -28,6 +28,64 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-18 00:35 +07:00 - Claude - Act on Codex's source-vs-log audit; correct a false completion claim
+- Scope: Codex compared this log against the source and found that the strict
+  hardware-layout validation I recorded as done in `9808ad8` was never in the
+  file. Codex was right. My scripted edit's `str.replace` silently matched
+  nothing and I reported success on the strength of an unconditional `print`,
+  so the log asserted a fix that did not exist. Re-applied it and addressed the
+  three other findings from the same audit.
+- Files: `components/bms/bms_jk.c` (layout gate now accepts only known hardware
+  families: `11.x` to 32S, `10.x`/`9.x`/`8.x` to 24S, everything else stays
+  `JK_PROTO_UNKNOWN` and `jk_feed` refuses the cell frame);
+  `main/ble_bms_client.c` + `.h` (`s_peer_persisted` writes NVS only after
+  device-info returns with a recognised layout, so a mis-tap on a neighbour's
+  pack does not come back after reboot; `ble_bms_scan_start` returns `bool` and
+  refuses while `s_connecting`; new `ble_bms_scan_is_active`; header signatures
+  brought back in step with the implementation);
+  `Super_VESC_Display/custom/bms_view.c` (a refused scan now prints
+  "Busy connecting - close and retry" instead of an empty list that is
+  indistinguishable from "no packs in range");
+  `tools/test/test_bms_jk.c` (new group covering the layout gate).
+- Checks: `gcc -std=c11 -Wall -Wextra` host test - 10 groups, PASSED, 0
+  failures; the gate group asserts 8 strings including `"ÿþ garbage"`,
+  `"V2.1"` and `""` all stay UNKNOWN *and* refuse a following cell frame.
+  Firmware `idf.py -B build_jc4880 build` - exit 0, app 0x439280 of 0x500000
+  (16% free). After each scripted edit the script now aborts with
+  `raise SystemExit` when the pattern does not match, and I grep the file to
+  confirm; that is the direct consequence of this audit finding.
+- Status: complete
+- Handoff: three of Codex's findings are addressed; two are deliberately not.
+  (1) Scan/connect-slot arbitration between the BMS client and the cadence
+  client still has no referee - it needs a `ble_central_manager` refactor that
+  touches working code, and the third central slot is genuinely unused on this
+  vehicle. (2) Session globals and persistence flags still lack one serialized
+  control owner; it is the same piece of architecture as (1) and should be done
+  with it rather than patched separately. Neither is safe to leave unfixed if a
+  second central peer is ever added. Nothing on the BMS path has run against a
+  real JK pack yet - `docs/BMS_HARDWARE_BRINGUP.md` is the sequence to follow
+  when the hardware is on the bench.
+
+### 2026-08-17 23:48 +07:00 - Codex - Live BE control review after adapter joins
+- Scope: monitored Claude's concurrent BMS work through commits `a9c8977`,
+  `8e4378f` and `6adfadb`, reviewed the new alarm/identity/sleep joins, and
+  retested the resulting shared HEAD without editing BE-owned source.
+- Files: inspected `components/bms/**`, `main/ble_bms_client.{c,h}`,
+  `main/ble_host.c`, `main/ble_cadence_client.c`,
+  `Super_VESC_Display/custom/bms_view.c` and BMS tests/contracts.
+- Checks: JK host parser test passed all 9 groups with 0 failures (including
+  the new alarm assertions); simulator build passed; JC4880 build passed
+  (image `0x439120`, 16% app partition free).
+- Status: observation
+- Handoff: central scan/connect-slot arbitration remains open. Additional
+  source-vs-log check found that strict HW layout validation claimed for
+  `9808ad8` is not actually present: every non-empty non-`11.x` string still
+  falls back to 24S. Explicit CONNECT still persists before GATT/protocol
+  success; BMS scan cannot report busy/completion and does not cancel a
+  pending BMS initiator; session globals/persistence flags remain cross-task
+  without one serialized control owner. These need BE follow-up before real
+  hardware acceptance.
+
 ### 2026-08-18 00:55 +07:00 - Claude - FE-requested flows wired through the adapter
 - Scope: user asked me to read the FE's current code and wire in what it asks
   for. Three joins were missing, each one a field the FE already renders and
@@ -65,7 +123,7 @@ present from work performed in the current session.
   highlights and stores it in FE state; the disabled `CONNECT` button becomes
   enabled after selection and is the only action that calls the current BE
   bind/connect API.
-- Files: `Super_VESC_Display/custom/bms_view.c`,
+- Files: `Super_VESC_Display/custom/bms_view.c`, 
   `docs/BMS_FE_BE_CONTRACT.md`.
 - Checks: desktop simulator `mingw32-make -j8 default` passed; JC4880
   `ninja -C build_jc4880` passed (image `0x439070`, 16% app partition free);

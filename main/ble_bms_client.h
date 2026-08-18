@@ -31,12 +31,24 @@ void ble_bms_client_init(void);
 void ble_bms_on_ble_sync(uint8_t own_addr_type);
 
 void ble_bms_set_scan_cb(ble_bms_scan_cb_t cb);
-void ble_bms_scan_start(void);
 void ble_bms_scan_stop(void);
 
+/* Returns false when the scan could not be started — NimBLE allows one
+ * initiator at a time, so a connect already in flight blocks the scanner.
+ * The UI previously had no way to tell "nothing nearby" from "we never
+ * actually looked", and showed an empty list either way. */
+bool ble_bms_scan_start(void);
+bool ble_bms_scan_is_active(void);
+
 /* Bind to a peer and start connecting; pass NULL to unbind, drop the link and
- * clear the published snapshot. The address is not persisted here — the
- * settings layer owns NVS. */
+ * clear the published snapshot. Rebinding over a live link tears the old one
+ * down first.
+ *
+ * The address is NOT written to NVS here. It is persisted only once the peer
+ * has answered device-info with a layout we recognise — otherwise a mistaken
+ * tap on a neighbour's pack would come back on every boot. Storage lives in
+ * this module (namespace "bms_ble"), not in dev_settings: it is backend state
+ * and dev_settings is an upstream file the UI half also edits. */
 void ble_bms_bind(const ble_addr_t *addr);
 bool ble_bms_get_bound(ble_addr_t *out);
 
