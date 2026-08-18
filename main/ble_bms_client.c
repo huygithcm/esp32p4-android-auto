@@ -34,6 +34,14 @@ static const ble_uuid_t *CCCD_UUID   = BLE_UUID16_DECLARE(0x2902);
 #define POLL_INTERVAL_MS   1000
 /* Two missed polls before we treat the link as suspect and re-probe. */
 #define RX_TIMEOUT_MS      (POLL_INTERVAL_MS * 3)
+/* How often the worker re-arms a connect that never got off the ground.
+ * ble_gap_connect can be refused outright -- NimBLE runs one initiator, so a
+ * scan or the cadence client holding it returns an error immediately rather
+ * than through the GAP callback. Every other retry in this module is
+ * event-driven, and there is no event for "the call failed", so without this
+ * tick a refusal at boot is permanent. Five seconds is far longer than any
+ * competing procedure and invisible next to the ~30 s connect timeout. */
+#define RECONNECT_RETRY_MS 5000
 
 /* One frame is 300 bytes; size the pipe for a couple of them so a slow
  * worker cannot lose a burst. */
@@ -426,9 +434,10 @@ static void bms_worker(void *arg)
     (void)arg;
     uint8_t         chunk[128];
     bms_snapshot_t  snap;
-    int64_t         last_poll_us = 0;
-    int64_t         last_rx_us   = esp_timer_get_time();
-    int64_t         last_log_us  = 0;
+    int64_t         last_poll_us  = 0;
+    int64_t         last_rx_us    = esp_timer_get_time();
+    int64_t         last_log_us   = 0;
+    int64_t         last_rearm_us = 0;
 
     for (;;) {
         /* NVS on behalf of bind()/unbind(), which run on the LVGL task. */
@@ -508,6 +517,33 @@ static void bms_worker(void *arg)
              * advance is forced to be non-zero so a parser bug cannot spin
              * this loop forever. */
             off += used ? used : take;
+        }
+
+        /* Re-arm a connect that was refused before it could produce an event.
+         *
+         * arm_connect() is otherwise only reached from connect-failed,
+         * disconnect, BLE sync and bind. When ble_gap_connect() returns an
+         * error the first three never fire again: s_connecting drops back to
+         * false with no connection to later disconnect, so the link sits in
+         * CONNECTING for good and only re-pairing by hand recovers it. The
+         * reachable case is boot -- a peer restored from NVS arms on sync
+         * while another central procedure still owns the initiator.
+         *
+         * arm_connect() re-checks bound/synced/connecting/connected itself, so
+         * this is a no-op whenever the link is healthy or already in flight.
+         * s_scanning is checked here and not there because the user's own scan
+         * owns the initiator on purpose: NimBLE would refuse the connect, and
+         * re-arming through a pairing sweep would only log a warning every
+         * five seconds while the rider is reading the device list.
+         * The reads below are not synchronised for the same reason the
+         * s_subscribed read below is not: the blocking receive above is an
+         * opaque call, so the compiler cannot hoist them out of the loop. */
+        if (s_bound && s_conn == BLE_HS_CONN_HANDLE_NONE && !s_connecting &&
+            !s_scanning &&
+            now - last_rearm_us >= (int64_t)RECONNECT_RETRY_MS * 1000) {
+            last_rearm_us = now;
+            ESP_LOGI(TAG, "re-arming connect");
+            arm_connect();
         }
 
         if (!s_subscribed) continue;

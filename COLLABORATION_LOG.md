@@ -28,6 +28,60 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-18 21:55 +07:00 - Claude - Re-arm a refused connect; found while re-reading the BE fixes
+- Scope: user asked for a review of the BE changes rather than another build,
+  since Codex was building. The review confirmed the four fixes in `7e523a7`
+  are sound, and turned up a separate defect that predates them.
+- The defect: `arm_connect()` was reached only from connect-failed, disconnect,
+  BLE sync, and bind. When `ble_gap_connect()` returns an error the call never
+  produces a GAP event, so none of those four fire again: `s_connecting` drops
+  back to false with no connection to later disconnect, and the link sits in
+  CONNECTING permanently. Only re-pairing by hand recovers it. The reachable
+  path is boot -- a peer restored from NVS arms on sync while another central
+  procedure still owns the single NimBLE initiator, which is exactly the
+  cadence client. This is Codex's slot-arbitration concern showing up as a
+  concrete boot-time failure, and it would have been the first thing
+  `docs/BMS_HARDWARE_BRINGUP.md` hit.
+- Files: `main/ble_bms_client.c` -- `RECONNECT_RETRY_MS` (5 s) and a re-arm in
+  the worker loop, guarded on bound && !connected && !connecting && !scanning.
+  The scanning guard is deliberate: a user-opened pairing sweep owns the
+  initiator on purpose, and re-arming through it would only log a refusal every
+  five seconds while the rider reads the device list.
+- Verification of the fixes reviewed: every `return` inside `jk_feed`'s byte
+  loop is after `*consumed = i + 1` (the three earlier branches are all
+  `continue`); `decode_cell_info` opens with `memset(out, 0, sizeof *out)`, so
+  two frames in one chunk cannot bleed valid_mask into each other -- rare
+  before, routine now; `hw[2]` is in bounds for any input because
+  `hw_version[16]` and `hw[0]` short-circuits; `s_rssi_dbm` and the new `rssi`
+  parameter are both `int8_t`.
+- Checks: firmware `ninja -C build_jc4880` exit 0, no warnings, app 0x439410 of
+  0x500000 (16% free). Host parser test 12 groups, 0 failures (unchanged --
+  it does not reach this code).
+- Status: complete
+- Handoff: the re-arm has NO automated test. `ble_bms_client.c` cannot link on
+  the host because it depends on NimBLE, so the whole transport/session layer
+  is still unverified except by inspection -- the gap Codex named. Only real
+  hardware settles it: with a bound pack powered off at boot, the log must show
+  "re-arming connect" every 5 s and the tab must reach LIVE within seconds of
+  the pack coming up. Also noted while reviewing: `s_peer_name` now has three
+  writers (GAP handler, bind on the LVGL task, worker reading it). Bounded by
+  snprintf and worth at most one garbled name, but it adds weight to the
+  serialized-owner item rather than relieving it.
+
+### 2026-08-18 21:18 +07:00 - Codex - Rebuild latest BMS HEAD 7e523a7
+- Scope: rebuilt the latest shared HEAD after Claude tightened the JK layout
+  gate and fixed the multi-frame receive path. No source file was edited.
+- Files: only this build record was added; existing dirty FE/contract files
+  were preserved.
+- Checks: JC4880 firmware build passed using Ninja; image size `0x439360`, with
+  `0xc6ca0` bytes (16%) of the app partition free. Desktop simulator build
+  passed and regenerated `build/bin/simulator.exe` and `simulator.dll` after
+  selecting the MSYS2 MinGW32 toolchain explicitly. `git diff --check` passed
+  with only existing LF-to-CRLF conversion warnings.
+- Status: build complete on `7e523a7`.
+- Handoff: no compile or link error remains. Simulator still prints the known
+  non-fatal `uname -s` warning under PowerShell.
+
 ### 2026-08-18 21:35 +07:00 - Claude - Act on Codex's review of 41580df; fix a 50% frame loss
 - Scope: took the four BE findings from Codex's 21:00 review. All four were
   real. The parser/transport one was costing every other reading.
