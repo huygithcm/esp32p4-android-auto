@@ -158,8 +158,23 @@ esp_err_t wifi_manager_start(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
+    /* Not ESP_ERROR_CHECK. On this board the Wi-Fi MAC lives on the C6 and is
+     * reached over ESP-Hosted, so esp_wifi_init fails outright whenever that
+     * link is down -- a miswired or unresponsive co-processor, or a host built
+     * for the wrong transport. Aborting there panics the P4 into a reboot loop
+     * that no amount of power-cycling escapes, and takes the dashboard with
+     * it: the VESC telemetry this device exists for arrives over CAN and needs
+     * nothing from the C6. Fail the call, let the caller log it, keep driving. */
     wifi_init_config_t init_cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&init_cfg));
+    const esp_err_t werr = esp_wifi_init(&init_cfg);
+    if (werr != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_init: %s — Wi-Fi unavailable (co-processor "
+                      "link down). Android Auto and OTA over Wi-Fi are off; "
+                      "the dashboard is unaffected.", esp_err_to_name(werr));
+        vEventGroupDelete(s_wifi_events);
+        s_wifi_events = NULL;
+        return werr;
+    }
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                                        &on_event, NULL, NULL));
@@ -177,6 +192,10 @@ esp_err_t wifi_manager_start(void)
 
 esp_err_t wifi_manager_wait_ready(uint32_t timeout_ms)
 {
+    /* start() releases the group when it bails out early, and the caller is
+     * allowed to ask anyway. */
+    if (!s_wifi_events) return ESP_FAIL;
+
     TickType_t ticks = (timeout_ms == UINT32_MAX) ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
     EventBits_t bits = xEventGroupWaitBits(s_wifi_events,
                                            WIFI_READY_BIT | WIFI_FAIL_BIT,

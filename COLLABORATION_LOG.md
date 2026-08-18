@@ -28,6 +28,47 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-18 22:45 +07:00 - Claude - Root-caused the C6 failure: jc4880 sdkconfig had drifted to SPI/esp32h2
+- Scope: user captured a boot log from the board. It settled the OTA-screen
+  question and exposed something worse underneath.
+- What the log showed: `spi: Resetting slave on SPI bus with pin 12`, three
+  failed connection attempts, `fwversion not readable: ESP_FAIL`, then
+  `ESP_ERROR_CHECK failed ... wifi_manager.c line 162 esp_wifi_init` -> abort
+  -> reboot, on a loop. `reset reason: PANIC (4)` on the first captured boot
+  shows it had been looping for a while. The attempt-counter guard committed
+  in 98d781d worked as intended and is visible in the log.
+- Root cause: `build_jc4880/sdkconfig` had drifted from `sdkconfig.defaults` on
+  three settings at once -- SPI instead of SDIO, `esp32h2` instead of `esp32c6`,
+  reset GPIO 12 instead of 54. The firmware was addressing hardware that is not
+  on this board, so the C6 could never answer. `sdkconfig.defaults` only seeds a
+  build directory that does not yet exist; once the file is written, a component
+  upgrade (esp_hosted 2.12.6 -> 2.12.8 here) that renames or re-defaults these
+  Kconfig choices leaves the stale file silently taking the component's new
+  defaults. Nothing warns: the build is clean and every version string matches.
+- Files: `build_jc4880/sdkconfig` regenerated from the defaults (SDIO/C6/GPIO54
+  confirmed by grep); `main/wifi_manager.c` -- `esp_wifi_init` failure returns
+  instead of ESP_ERROR_CHECK, and `wifi_manager_wait_ready` guards the event
+  group it now may not have; `main/main.c` -- caller takes the existing
+  wifi-failed path instead of ESP_ERROR_CHECK, plus two `#error` assertions on
+  the hosted transport and co-processor target so this drift cannot recur
+  silently.
+- Rationale for the wifi change: the Wi-Fi MAC is on the C6, so any C6 fault
+  aborted the P4 into a reboot loop that power-cycling cannot escape, taking
+  the dashboard with it. VESC telemetry arrives over CAN and needs nothing from
+  the C6, so degrading to "no Android Auto" beats bricking the boot.
+- Checks: full rebuild after the config regen, exit 0, no warnings, app
+  0x436eb0 of 0x500000 (16% free). Assertions verified to compile against the
+  corrected config. merged.bin regenerated, 0x456eb0, offset 0x0.
+- Status: complete pending the user reflashing over USB.
+- Handoff: the next boot log decides whether this is finished. Expect the SDIO
+  transport in place of the SPI lines, a readable slave version, and no panic.
+  If the C6 still does not answer over SDIO the fault moves to hardware and the
+  attempt counter will now stop it after two rounds instead of looping. Note
+  for BMS work: NimBLE runs on the C6 through ESP-Hosted VHCI, so until this is
+  confirmed working every step of `docs/BMS_HARDWARE_BRINGUP.md` fails at step
+  1 for reasons unrelated to the BMS. Worth checking whether `build/` (waveshare)
+  carries the same drift -- it was not rebuilt here.
+
 ### 2026-08-18 22:20 +07:00 - Claude - Bound the C6 OTA retry; device was stuck on the update screen
 - Scope: user reported the board sitting on "Updating Wi-Fi co-processor" and
   asked whether a version was wrong. The versions are fine; the loop had no

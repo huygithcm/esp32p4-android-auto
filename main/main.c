@@ -85,6 +85,22 @@ void port_start_app_hook(void)
 #include "vesc_ui_updater.h"
 #include "wifi_manager.h"
 
+/* The C6 hangs off SDIO on both boards, and sdkconfig.defaults says so. It is
+ * still worth asserting here, because sdkconfig.defaults only seeds a build
+ * directory that does not exist yet: once build_<board>/sdkconfig is written,
+ * a component upgrade that renames or re-defaults these Kconfig choices makes
+ * the stale file silently accept the component's new defaults instead. That
+ * happened -- jc4880 drifted to SPI transport against an esp32h2 target with
+ * reset on GPIO12, none of which is this hardware. The build was clean, the
+ * versions all matched, and the only symptom was a co-processor that never
+ * answered. Delete build_<board>/sdkconfig and reconfigure if this fires. */
+#if !CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
+#error "esp-hosted must use the SDIO transport — delete build_<board>/sdkconfig and reconfigure"
+#endif
+#if !CONFIG_ESP_HOSTED_CP_TARGET_ESP32C6
+#error "esp-hosted co-processor target must be esp32c6 — delete build_<board>/sdkconfig and reconfigure"
+#endif
+
 static const char *TAG = "main";
 
 /* Force ld to pull main/files_screen.c.o out of libmain.a so its strong
@@ -524,8 +540,13 @@ void app_main(void)
     idle_screen_show("Android Auto", "Initialising Wi-Fi...");
 
 #if CONNECTION_MODE == MODE_WIRELESS_HELPER
-    ESP_ERROR_CHECK(wifi_manager_start());
-    if (wifi_manager_wait_ready(30000) != ESP_OK) {
+    /* Not ESP_ERROR_CHECK: the Wi-Fi MAC is on the C6 and this call fails
+     * whenever that link is down. Aborting here panicked the P4 into a reboot
+     * loop, which is a far worse outcome than losing Android Auto -- the
+     * dashboard runs on CAN and is already up by this point. Returning from
+     * app_main leaves every other task running. */
+    if (wifi_manager_start() != ESP_OK ||
+        wifi_manager_wait_ready(30000) != ESP_OK) {
         ESP_LOGE(TAG, "wifi setup failed, halting");
         idle_screen_show("Android Auto", "Wi-Fi setup failed");
         return;
