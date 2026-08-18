@@ -28,6 +28,41 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-18 22:20 +07:00 - Claude - Bound the C6 OTA retry; device was stuck on the update screen
+- Scope: user reported the board sitting on "Updating Wi-Fi co-processor" and
+  asked whether a version was wrong. The versions are fine; the loop had no
+  brake.
+- Version audit (all consistent, none of it is the fault):
+  embedded C6 slave blob is 2.12.6 (built 2026-05-05, idf v5.5.3) against host
+  esp_hosted 2.12.8, but `c6_ota.c` compares `(v & 0xFFFFFF00)` and
+  `ESP_HOSTED_VERSION_VAL` packs `(major<<16)|(minor<<8)|patch`, so the patch
+  byte is masked off and 2.12 == 2.12 skips the OTA by design. The BT agent
+  blob emits `BT-VER:0.6.3` and `CONFIG_BT_AGENT_FW_VERSION` is "0.6.3".
+- The actual defect: `main.c` restarts the P4 on `C6_OTA_STATUS_UPDATED`, and
+  nothing bounded that. Any condition that leaves the slave version unreadable
+  or still mismatched after a flash - the `fwversion not readable ... assuming
+  update needed` branch in particular - becomes update, restart, update,
+  restart with the update screen permanently up and no exit but USB.
+- Files: `main/c6_ota.c` - attempt counter in NVS (`c6_ota`/`tries`), max 2,
+  incremented before each OTA, cleared whenever a boot finds the slave already
+  matching (including under `C6_OTA_FORCE`, so the counter cannot disable the
+  thing FORCE asks for). Past the limit it logs at ERROR and returns
+  NOT_REQUIRED, so the board boots with whatever slave firmware it has.
+- Checks: `ninja -C build_jc4880` exit 0, no warnings, app 0x4395d0 of
+  0x500000 (16% free). merged.bin regenerated at 0x4595d0. Not verified on
+  hardware - the user's board is the only instance of this failure.
+- Status: complete
+- Handoff: this stops the loop, it does not explain it. The root cause is still
+  open and the log line decides it: `fwversion not readable: <err>` means the
+  SDIO/hosted link to the C6 is failing, while `Slave version: X.Y.Z` with
+  X.Y != 2.12 means a genuine mismatch that the flash is not curing. Worth
+  noting for the BMS work: NimBLE runs on the C6 through ESP-Hosted VHCI, so a
+  C6 that never comes up means no BLE at all and every step of
+  `docs/BMS_HARDWARE_BRINGUP.md` fails at step 1 for a reason that has nothing
+  to do with the BMS. Also observed: CLAUDE.md says BT agent OTA defaults to
+  off, but `sdkconfig.defaults` sets `CONFIG_BT_AGENT_OTA_ENABLED=y`; the
+  Kconfig default is indeed n, so the doc is describing the wrong layer.
+
 ### 2026-08-18 21:55 +07:00 - Claude - Re-arm a refused connect; found while re-reading the BE fixes
 - Scope: user asked for a review of the BE changes rather than another build,
   since Codex was building. The review confirmed the four fixes in `7e523a7`

@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "nvs.h"
 #include "esp_hosted.h"
 #include "esp_hosted_api_types.h"
 #include "esp_hosted_ota.h"
@@ -16,6 +17,43 @@
 #include "ota_screen.h"
 
 static const char *TAG = "c6_ota";
+
+/* Attempt counter, persisted across the restart this module triggers.
+ *
+ * A successful OTA returns C6_OTA_STATUS_UPDATED and app_main restarts the P4
+ * to resync. Nothing bounded that: any condition leaving the slave version
+ * unreadable or still mismatched after a flash -- a wedged SDIO link, an image
+ * the C6 accepts but does not boot -- became an update/restart/update loop
+ * with the update screen permanently in front of the user and no way out but
+ * USB. The dashboard is this device's primary job and does not need the C6 at
+ * all, so after a couple of rounds it is strictly better to give up, say so,
+ * and boot.
+ *
+ * Cleared as soon as a boot finds the slave already matching, so a genuine
+ * one-shot update on a fresh board costs nothing. */
+#define C6_OTA_NVS_NS    "c6_ota"
+#define C6_OTA_NVS_TRIES "tries"
+#define C6_OTA_MAX_TRIES 2
+
+static uint8_t tries_load(void)
+{
+    nvs_handle_t h;
+    uint8_t n = 0;
+    if (nvs_open(C6_OTA_NVS_NS, NVS_READONLY, &h) != ESP_OK) return 0;
+    nvs_get_u8(h, C6_OTA_NVS_TRIES, &n);
+    nvs_close(h);
+    return n;
+}
+
+static void tries_store(uint8_t n)
+{
+    nvs_handle_t h;
+    if (nvs_open(C6_OTA_NVS_NS, NVS_READWRITE, &h) != ESP_OK) return;
+    if (n) nvs_set_u8(h, C6_OTA_NVS_TRIES, n);
+    else   nvs_erase_key(h, C6_OTA_NVS_TRIES);
+    nvs_commit(h);
+    nvs_close(h);
+}
 
 /* Last successfully-read slave version, formatted as "MAJ.MIN.PAT". Cleared
  * if the read fails on the current boot so the UI doesn't show stale data
@@ -99,13 +137,31 @@ c6_ota_status_t c6_ota_check_and_update(void)
     if (vret == ESP_OK && (host_ver & 0xFFFFFF00) == (slave & 0xFFFFFF00)) {
 #if CONFIG_C6_OTA_FORCE
         ESP_LOGW(TAG, "Slave matches but C6_OTA_FORCE=y — running anyway");
+        /* The version is fine, so the give-up counter below must not build up
+         * and eventually disable the very thing FORCE asks for. */
+        tries_store(0);
 #else
         ESP_LOGI(TAG, "Slave already matches host major.minor — skipping OTA");
+        tries_store(0);
         return C6_OTA_STATUS_NOT_REQUIRED;
 #endif
     }
 
-    ESP_LOGW(TAG, "Slave needs update — running OTA");
+    /* Give up rather than loop. Reaching here on consecutive boots means the
+     * previous flash did not change what the slave reports, so repeating it
+     * will not either -- and each round costs a restart with the update
+     * screen up, which is what the user actually sees. */
+    const uint8_t tries = tries_load();
+    if (tries >= C6_OTA_MAX_TRIES) {
+        ESP_LOGE(TAG, "Slave still mismatched after %u attempts — giving up "
+                      "and booting with the firmware it has. Wi-Fi and BLE may "
+                      "not work; the dashboard does not need them.", tries);
+        return C6_OTA_STATUS_NOT_REQUIRED;
+    }
+    tries_store((uint8_t)(tries + 1));
+
+    ESP_LOGW(TAG, "Slave needs update — running OTA (attempt %u of %u)",
+             tries + 1, C6_OTA_MAX_TRIES);
     ota_screen_show("Don't power off");
     ota_screen_set_status("Preparing...");
 
