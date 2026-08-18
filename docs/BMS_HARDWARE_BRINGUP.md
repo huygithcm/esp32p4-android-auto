@@ -17,6 +17,26 @@ scripts/capture.sh 120            # or idf.py -B build_jc4880 -p <PORT> monitor
 
 Everything the BMS path prints is tagged `ble_bms`.
 
+**Order of the eleven steps, at a glance.** Steps 1-4 must pass before any
+later result means anything. Steps 5, 9 and 10 each cover a defect that was
+found by reading code rather than by a test, and none of them can fail visibly
+on the bench -- 5 shows correct numbers arriving half as often, 9 fails only
+across a power cycle, 10 fails only when the pack is off at boot.
+
+| | Step | Needs |
+|---|---|---|
+| 1 | Peer is discoverable | bench |
+| 2 | Link up, GATT found, name right | bench |
+| 3 | Layout detected | bench |
+| 4 | Cell data arrives | bench |
+| 5 | Update rate is 1 Hz, not 0.5 Hz | bench, one minute |
+| 6 | Values match the JK app | bench + phone app |
+| 7 | Absent fields show as absent | bench |
+| 8 | Poll gate pauses and resumes | bench |
+| 9 | Pairing survives a power cycle, a mis-tap does not | bench, power cycle |
+| 10 | Recovers when the pack is off at boot | bench, power cycle |
+| 11 | Coexists with AA and the companion app | **a ride** |
+
 ---
 
 ## Preconditions
@@ -50,6 +70,12 @@ a plausible RSSI.
   scanner and widen the filter if it differs.
 - Phone app still connected.
 
+**Fail — the list says `Busy connecting - close and retry`:** not a fault. A
+connect is already in flight and NimBLE runs one initiator at a time, so the
+scan was refused. Close the modal, wait for the link to settle, try again. An
+empty list used to be the only symptom, which was indistinguishable from no
+packs in range.
+
 ---
 
 ## 2. The link comes up and GATT is found
@@ -72,6 +98,14 @@ the service this driver expects. Dump its GATT table with a phone scanner
 **Fail — connects then immediately disconnects:** usually the phone app
 reclaiming the link.
 
+**Also check the name.** Whatever the tab shows must be the pack you just
+selected. A JK states its name only in advertising, and bind stops the scan
+first, so the name has to be carried in from the row you tapped --
+`ble_bms_bind_named()`. If the FE still calls plain `ble_bms_bind()` the name
+will be **empty** until a later sweep sees the pack again: that is expected and
+harmless. Showing the *previous* pack's name over the new pack's numbers is
+not, and is the bug this replaced.
+
 **Note on MTU:** a small value here is not a failure. Reassembly handles any
 fragment size; a large MTU only means fewer notifications per frame.
 
@@ -88,10 +122,14 @@ I ble_bms: JK hw=11.XW sw=11.26 layout=32S
 Compare `hw` and `sw` against what the JK app reports. They must match.
 
 **Fail — `unrecognised JK hw '...' — cannot pick layout`:** the mapping in
-`decode_device_info()` treats hardware `11.x` as 32S and everything else as
-24S. A version string outside that shape lands here and the driver refuses to
-decode rather than guess. Report the exact string; widening the mapping is a
-two-line change.
+`decode_device_info()` accepts only known families and **requires the version
+dot**: `11.` is 32S, `10.`/`9.`/`8.` are 24S. Anything else -- including `1123`
+or `10XW`, which an earlier version would have accepted -- stays unknown and
+the driver refuses to decode rather than guess. Report the exact string;
+widening the mapping is a two-line change.
+
+Refusing is deliberate. The catch-all this replaced treated every non-empty
+string as 24S, so a garbled version field produced plausible, wrong numbers.
 
 **Fail — the version strings are garbage:** the offsets for those fields
 (22 and 30) are the least corroborated part of the driver. Everything else was
@@ -132,7 +170,31 @@ failing the checksum. Suspect a fragment being dropped: check `dropped`. If
 
 ---
 
-## 5. The values are actually right — the check that matters
+## 5. The update rate — the regression that hides in plain sight
+
+**Do:** leave the tab open for a minute and watch the counters line.
+
+**Pass:** `frames=` climbs by roughly **60 per minute**, one per poll, and
+`dropped=` stays at 0.
+
+**Fail — `frames` climbs at about half that (25-35/min):** the transport is
+losing every other frame. `jk_feed` stops at the end of each completed frame
+and reports how far it got; if the caller resumes past that point instead of
+at `*consumed`, the skipped bytes are the next frame's preamble and that whole
+frame is lost. Chunks are 128 bytes against 300-byte frames, so a frame ends
+mid-chunk almost every time.
+
+This shipped once. It is invisible on the bench because the numbers are all
+correct -- they just arrive half as often -- and no host test caught it because
+every test fed whole frames. `tools/test/test_bms_jk.c` now sweeps five chunk
+sizes for exactly this; note that sizes 20, 300 and 7 pass either way and only
+128 and 512 expose it.
+
+**What it costs on the vehicle:** a 2 s refresh where the poll asks for 1 s.
+
+---
+
+## 6. The values are actually right — the check that matters
 
 Open the JK phone app side by side (after disconnecting the head unit, or on a
 second pack) and compare the **first-frame dump**, which prints every cell:
@@ -160,7 +222,7 @@ Check the signs too:
 
 ---
 
-## 6. Fields that are meant to be absent
+## 7. Fields that are meant to be absent
 
 `charger_present` and `detail_log_count` are **not implemented** — the first is
 not carried in the cell frame, the second lives in a frame type the driver does
@@ -171,7 +233,7 @@ says is invalid must appear as `—`, never as a number.
 
 ---
 
-## 7. The poll gate
+## 8. The poll gate
 
 **Do:** switch to the VESC tab, watch the console. Switch back.
 
@@ -191,18 +253,66 @@ sides must agree on their initial state; this has broken twice already.
 
 ---
 
-## 8. Persistence
+## 9. Persistence
 
 **Do:** wait ten seconds after pairing, power-cycle the board.
 
 **Pass:** `restored bound peer from NVS`, then connect without pairing again.
 
-The wait matters: the write happens on bind, but cutting power immediately
-after any settings change is a good way to lose it.
+**The address is written only after the pack answers device-info with a layout
+the driver recognises** -- not on bind. So the wait is not superstition: pair,
+confirm the `JK hw=... layout=...` line from step 3 has appeared, and only then
+cut power. Power-cycling between the tap and that line leaves nothing stored,
+and that is the intended behaviour, not a lost write.
+
+**Also test the other half:** tap a pack you do NOT want -- a neighbour's, or
+any non-JK device if one shows -- then power-cycle without waiting. It must
+**not** come back. Before this gate, a mis-tap returned on every boot and the
+only escape was unpairing something you never meant to pair.
 
 ---
 
-## 9. Coexistence — the one that needs a ride
+## 10. Recovery when the pack is absent at boot
+
+The path most likely to fail in the garage, and the newest code here.
+
+**Do:** with a pack already paired, power the **board** up while the **pack is
+off**. Wait a minute, then switch the pack on.
+
+**Pass:**
+
+```
+I ble_bms: restored bound peer from NVS
+I ble_bms: re-arming connect          <- every 5 s while nothing answers
+...
+I ble_bms: connected, conn=1          <- within seconds of the pack coming up
+```
+
+The tab must reach live on its own. Nobody should have to re-pair.
+
+**Why this step exists:** `arm_connect()` is otherwise only reached from
+connect-failed, disconnect, BLE sync and bind. When `ble_gap_connect()` is
+refused outright it raises no GAP event, so none of those four ever fire
+again -- the link sat in CONNECTING permanently and only re-pairing by hand
+recovered it. The reachable trigger is boot: the peer restored from NVS arms
+on sync while another central procedure still owns the single NimBLE
+initiator.
+
+**Fail — no `re-arming connect` line at all:** the guard is wrong. It requires
+bound && not connected && not connecting && not scanning; check which one is
+stuck, in that order.
+
+**Fail — the line appears but the pack never joins:** re-arming is working and
+the problem is elsewhere. Go back to step 1 with the pack powered.
+
+**Note:** this step has no automated test and cannot get one on the host --
+`main/ble_bms_client.c` depends on NimBLE and does not link off-target. The
+whole transport and session layer is verified by inspection only. This test is
+the coverage.
+
+---
+
+## 11. Coexistence — the one that needs a ride
 
 Everything above can be done on a bench. This one cannot.
 
