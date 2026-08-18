@@ -140,9 +140,29 @@ static jk_feed_result_t feed_chunked(jk_ctx_t *ctx, const uint8_t *f, size_t n,
     jk_feed_result_t last = JK_FEED_NEED_MORE;
     for (size_t i = 0; i < n; i += chunk) {
         const size_t take = (n - i < chunk) ? (n - i) : chunk;
-        last = jk_feed(ctx, f + i, take, out);
+        last = jk_feed(ctx, f + i, take, out, NULL);
     }
     return last;
+}
+
+/* Mimic the BLE worker: fixed-size transport chunks over a byte stream that
+ * holds more than one frame, resuming at *consumed exactly as the client does.
+ * Returns how many snapshots came out. */
+static int feed_stream(jk_ctx_t *ctx, const uint8_t *data, size_t n,
+                       size_t chunk, bms_snapshot_t *out)
+{
+    int snapshots = 0;
+    for (size_t pos = 0; pos < n; pos += chunk) {
+        const size_t got = (n - pos < chunk) ? (n - pos) : chunk;
+        for (size_t off = 0; off < got; ) {
+            size_t used = 0;
+            const jk_feed_result_t r =
+                jk_feed(ctx, data + pos + off, got - off, out, &used);
+            if (r == JK_FEED_SNAPSHOT) snapshots++;
+            off += used ? used : (got - off);
+        }
+    }
+    return snapshots;
 }
 
 int main(void)
@@ -163,7 +183,7 @@ int main(void)
     jk_init(&ctx);
     jk_set_proto(&ctx, JK_PROTO_02_32S);
     make_cell_frame(f, 32, 4);
-    CHECK(jk_feed(&ctx, f, sizeof f, &s) == JK_FEED_SNAPSHOT,
+    CHECK(jk_feed(&ctx, f, sizeof f, &s, NULL) == JK_FEED_SNAPSHOT,
           "32S frame did not decode");
     check_common(&s, "JK02_32S, single fragment");
 
@@ -173,14 +193,14 @@ int main(void)
     jk_set_proto(&ctx, JK_PROTO_02_24S);
     make_cell_frame(f, 0, 4);
     f[JK_FRAME_LEN - 1] ^= 0xFF;
-    CHECK(jk_feed(&ctx, f, sizeof f, &s) == JK_FEED_CRC_ERROR,
+    CHECK(jk_feed(&ctx, f, sizeof f, &s, NULL) == JK_FEED_CRC_ERROR,
           "bad checksum was not caught");
 
     /* ---- unknown layout must refuse rather than guess ------------------- */
     printf("[layout unknown]\n");
     jk_init(&ctx);                       /* proto left UNKNOWN */
     make_cell_frame(f, 0, 4);
-    CHECK(jk_feed(&ctx, f, sizeof f, &s) == JK_FEED_IGNORED,
+    CHECK(jk_feed(&ctx, f, sizeof f, &s, NULL) == JK_FEED_IGNORED,
           "decoded a cell frame without knowing the layout");
 
     /* ---- resync: garbage, then a truncated frame, then a good one ------- */
@@ -188,10 +208,10 @@ int main(void)
     jk_init(&ctx);
     jk_set_proto(&ctx, JK_PROTO_02_24S);
     const uint8_t junk[] = { 0x00, 0x55, 0x11, 0x55, 0xAA, 0x22 };
-    jk_feed(&ctx, junk, sizeof junk, &s);
+    jk_feed(&ctx, junk, sizeof junk, &s, NULL);
     make_cell_frame(f, 0, 4);
-    jk_feed(&ctx, f, 150, &s);           /* half a frame, then it vanishes */
-    CHECK(jk_feed(&ctx, f, sizeof f, &s) == JK_FEED_SNAPSHOT,
+    jk_feed(&ctx, f, 150, &s, NULL);           /* half a frame, then it vanishes */
+    CHECK(jk_feed(&ctx, f, sizeof f, &s, NULL) == JK_FEED_SNAPSHOT,
           "parser did not resynchronise on the next preamble");
 
     /* ---- timers exist only on 32S --------------------------------------- */
@@ -199,13 +219,13 @@ int main(void)
     jk_init(&ctx);
     jk_set_proto(&ctx, JK_PROTO_02_24S);
     make_cell_frame(f, 0, 4);
-    jk_feed(&ctx, f, sizeof f, &s);
+    jk_feed(&ctx, f, sizeof f, &s, NULL);
     CHECK((s.valid_mask & BMS_V_TIMERS) == 0,
           "24S must not publish a timer — those bytes mean something else");
     jk_init(&ctx);
     jk_set_proto(&ctx, JK_PROTO_02_32S);
     make_cell_frame(f, 32, 4);
-    jk_feed(&ctx, f, sizeof f, &s);
+    jk_feed(&ctx, f, sizeof f, &s, NULL);
     CHECK((s.valid_mask & BMS_V_TIMERS) && s.emergency_timer_s == 90,
           "32S timer wrong: %u", s.emergency_timer_s);
 
@@ -220,7 +240,7 @@ int main(void)
     make_cell_frame(f, 32, 4);
     put_u16(&f[64 + 32], 999);          /* decoy at the full-shift offset */
     seal(f);
-    CHECK(jk_feed(&ctx, f, sizeof f, &s) == JK_FEED_SNAPSHOT, "32S frame");
+    CHECK(jk_feed(&ctx, f, sizeof f, &s, NULL) == JK_FEED_SNAPSHOT, "32S frame");
     CHECK(s.wire_res_mohm[0] == 3,
           "read resistance from the full-shift offset: got %u, want 3",
           s.wire_res_mohm[0]);
@@ -230,7 +250,7 @@ int main(void)
     jk_init(&ctx);
     jk_set_proto(&ctx, JK_PROTO_02_24S);
     make_cell_frame(f, 0, 2);           /* only two cells populated */
-    CHECK(jk_feed(&ctx, f, sizeof f, &s) == JK_FEED_SNAPSHOT, "cell frame");
+    CHECK(jk_feed(&ctx, f, sizeof f, &s, NULL) == JK_FEED_SNAPSHOT, "cell frame");
     CHECK(s.wire_res_valid_mask == 0x3,
           "wire mask must match the cell mask, got 0x%x", s.wire_res_valid_mask);
 
@@ -250,6 +270,8 @@ int main(void)
             { "8.2",   JK_PROTO_02_24S },
             { "\xff\xfe garbage", JK_PROTO_UNKNOWN },
             { "V2.1",  JK_PROTO_UNKNOWN },   /* plausible but unrecognised */
+            { "1123",  JK_PROTO_UNKNOWN },   /* "11" prefix, but no version dot */
+            { "10XW",  JK_PROTO_UNKNOWN },   /* ditto for the 24S family      */
             { "",      JK_PROTO_UNKNOWN },
         };
         for (unsigned k = 0; k < sizeof cases / sizeof cases[0]; k++) {
@@ -261,7 +283,7 @@ int main(void)
             seal(d);
 
             jk_init(&ctx);
-            CHECK(jk_feed(&ctx, d, sizeof d, &s) == JK_FEED_DEVICE_INFO,
+            CHECK(jk_feed(&ctx, d, sizeof d, &s, NULL) == JK_FEED_DEVICE_INFO,
                   "device info '%s' not parsed", cases[k].hw);
             CHECK(jk_get_proto(&ctx) == cases[k].want,
                   "hw '%s' -> layout %d, want %d", cases[k].hw,
@@ -270,11 +292,54 @@ int main(void)
             /* An unknown layout must also refuse to decode cell data. */
             if (cases[k].want == JK_PROTO_UNKNOWN) {
                 make_cell_frame(f, 0, 4);
-                CHECK(jk_feed(&ctx, f, sizeof f, &s) == JK_FEED_IGNORED,
+                CHECK(jk_feed(&ctx, f, sizeof f, &s, NULL) == JK_FEED_IGNORED,
                       "hw '%s': decoded cells despite unknown layout",
                       cases[k].hw);
             }
         }
+    }
+
+    /* ---- a chunk straddling a frame boundary must not eat the next frame -
+     * The transport hands over 128-byte chunks and a frame is 300, so a frame
+     * ends mid-chunk on almost every reading. jk_feed stops at that point; if
+     * the caller resumes past the end of the slice instead of at *consumed,
+     * the bytes it skips are the next frame's preamble and that whole frame
+     * is lost. Two frames in, two snapshots out. */
+    printf("[back-to-back frames survive chunking]\n");
+    {
+        uint8_t stream[JK_FRAME_LEN * 2];
+        jk_init(&ctx);
+        jk_set_proto(&ctx, JK_PROTO_02_24S);
+        make_cell_frame(f, 0, 4);
+        memcpy(stream, f, sizeof f);
+        memcpy(stream + JK_FRAME_LEN, f, sizeof f);
+
+        /* 128 is the client's real chunk size; the others are there so the
+         * result does not depend on one lucky alignment. */
+        static const size_t chunks[] = { 128, 20, 300, 512, 7 };
+        for (unsigned k = 0; k < sizeof chunks / sizeof chunks[0]; k++) {
+            jk_init(&ctx);
+            jk_set_proto(&ctx, JK_PROTO_02_24S);
+            const int n = feed_stream(&ctx, stream, sizeof stream, chunks[k], &s);
+            CHECK(n == 2, "chunk %u: got %d snapshots from 2 frames",
+                  (unsigned)chunks[k], n);
+        }
+    }
+
+    /* jk_feed must report where it stopped, not how much it was handed. */
+    printf("[consumed count stops at the frame boundary]\n");
+    {
+        uint8_t stream[JK_FRAME_LEN + 10];
+        size_t used = 0;
+        jk_init(&ctx);
+        jk_set_proto(&ctx, JK_PROTO_02_24S);
+        make_cell_frame(f, 0, 4);
+        memcpy(stream, f, sizeof f);
+        memset(stream + JK_FRAME_LEN, 0xA5, 10);
+        CHECK(jk_feed(&ctx, stream, sizeof stream, &s, &used) == JK_FEED_SNAPSHOT,
+              "frame did not decode");
+        CHECK(used == JK_FRAME_LEN, "consumed=%u, want %u",
+              (unsigned)used, (unsigned)JK_FRAME_LEN);
     }
 
     /* ---- command framing ------------------------------------------------ */

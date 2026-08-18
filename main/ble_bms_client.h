@@ -50,6 +50,16 @@ bool ble_bms_scan_is_active(void);
  * this module (namespace "bms_ble"), not in dev_settings: it is backend state
  * and dev_settings is an upstream file the UI half also edits. */
 void ble_bms_bind(const ble_addr_t *addr);
+
+/* As ble_bms_bind, but carries the identity the scan hit already knows.
+ *
+ * A JK pack only ever states its name in advertising, and bind() stops the
+ * scan before that can be seen again, so binding by address alone leaves the
+ * peer nameless until some later sweep happens across it. Passing the name and
+ * RSSI from the row the user tapped closes that gap; both are cleared first,
+ * so either form of bind drops the previous pack's identity rather than
+ * showing it above the new pack's numbers. Pass NULL/0 if unknown. */
+void ble_bms_bind_named(const ble_addr_t *addr, const char *name, int8_t rssi);
 bool ble_bms_get_bound(ble_addr_t *out);
 
 bool ble_bms_is_connected(void);

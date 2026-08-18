@@ -150,9 +150,9 @@ static void decode_device_info(jk_ctx_t *ctx)
      * entirely reasonable. UNSUPPORTED on screen with the raw string in the
      * log can be diagnosed; plausible wrong values cannot. */
     const char *hw = ctx->hw_version;
-    if (hw[0] == '1' && hw[1] == '1') {
+    if (hw[0] == '1' && hw[1] == '1' && hw[2] == '.') {
         ctx->proto = JK_PROTO_02_32S;
-    } else if (hw[0] == '1' && hw[1] == '0') {
+    } else if (hw[0] == '1' && hw[1] == '0' && hw[2] == '.') {
         ctx->proto = JK_PROTO_02_24S;
     } else if ((hw[0] == '8' || hw[0] == '9') && hw[1] == '.') {
         ctx->proto = JK_PROTO_02_24S;
@@ -308,8 +308,9 @@ static void decode_cell_info(jk_ctx_t *ctx, bms_snapshot_t *out)
 }
 
 jk_feed_result_t jk_feed(jk_ctx_t *ctx, const uint8_t *data, size_t len,
-                         bms_snapshot_t *out)
+                         bms_snapshot_t *out, size_t *consumed)
 {
+    if (consumed) *consumed = 0;
     if (!ctx || !data || len == 0) return JK_FEED_NEED_MORE;
 
     for (size_t i = 0; i < len; i++) {
@@ -361,6 +362,12 @@ jk_feed_result_t jk_feed(jk_ctx_t *ctx, const uint8_t *data, size_t len,
         ctx->in_frame = false;
         ctx->len      = 0;
 
+        /* From here every path leaves the loop, so the caller must be told
+         * where the frame ended. Reporting `len` instead would discard the
+         * head of the frame that follows -- with 128-byte transport chunks
+         * against 300-byte frames that is most of them. */
+        if (consumed) *consumed = i + 1;
+
         const uint8_t want_crc = ctx->buf[JK_FRAME_LEN - 1];
         const uint8_t got_crc  = jk_checksum(ctx->buf, JK_FRAME_LEN - 1);
         if (want_crc != got_crc) return JK_FEED_CRC_ERROR;
@@ -388,5 +395,7 @@ jk_feed_result_t jk_feed(jk_ctx_t *ctx, const uint8_t *data, size_t len,
         }
     }
 
+    /* Fell off the end: the whole slice went into the frame buffer. */
+    if (consumed) *consumed = len;
     return JK_FEED_NEED_MORE;
 }

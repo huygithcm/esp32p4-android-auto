@@ -255,6 +255,14 @@ static int bms_gap_event(struct ble_gap_event *event, void *arg)
 
     case BLE_GAP_EVENT_DISC_COMPLETE:
         s_scanning = false;
+        /* The scan window closing is the only signal the UI gets that the
+         * sweep finished. Left in SCANNING the tab spins forever, which reads
+         * as a hung radio rather than "nothing answered". Only fall back when
+         * no link took over in the meantime. */
+        if (s_conn == BLE_HS_CONN_HANDLE_NONE && !s_connecting) {
+            bms_model_set_link_state(s_bound ? BMS_LINK_STALE
+                                             : BMS_LINK_UNBOUND);
+        }
         return 0;
 
 #if defined(BLE_GAP_EVENT_LINK_ESTAB)
@@ -432,10 +440,10 @@ static void bms_worker(void *arg)
         const int64_t now = esp_timer_get_time();
 
         for (size_t off = 0; off < got; ) {
-            /* Feed byte-wise in slices so a fragment carrying the tail of one
-             * frame is not lost when jk_feed returns on completion. */
             const size_t take = got - off;
-            const jk_feed_result_t r = jk_feed(&s_jk, chunk + off, take, &snap);
+            size_t used = 0;
+            const jk_feed_result_t r = jk_feed(&s_jk, chunk + off, take, &snap,
+                                               &used);
 
             switch (r) {
             case JK_FEED_SNAPSHOT:
@@ -492,10 +500,14 @@ static void bms_worker(void *arg)
             default:
                 break;
             }
-            /* jk_feed consumes the whole slice unless it completed a frame,
-             * in which case the remainder is the next frame's head and the
-             * preamble resync picks it up on the following iteration. */
-            off += take;
+            /* Resume where the parser stopped. It returns at the end of each
+             * completed frame, so the rest of the slice still has to be fed:
+             * chunks are 128 bytes against 300-byte frames, so a frame ends
+             * mid-chunk constantly, and skipping the remainder threw away the
+             * next frame's preamble -- roughly every other reading. The
+             * advance is forced to be non-zero so a parser bug cannot spin
+             * this loop forever. */
+            off += used ? used : take;
         }
 
         if (!s_subscribed) continue;
@@ -617,6 +629,11 @@ void ble_bms_scan_stop(void)
 
 void ble_bms_bind(const ble_addr_t *addr)
 {
+    ble_bms_bind_named(addr, NULL, 0);
+}
+
+void ble_bms_bind_named(const ble_addr_t *addr, const char *name, int8_t rssi)
+{
     ble_bms_scan_stop();
 
     if (!addr) {
@@ -628,6 +645,7 @@ void ble_bms_bind(const ble_addr_t *addr)
         reset_link_state();
         bms_model_reset();
         s_rssi_dbm = 0;
+        s_peer_name[0] = '\0';
         s_erase_peer = true;
         ESP_LOGI(TAG, "unbound");
         return;
@@ -644,6 +662,19 @@ void ble_bms_bind(const ble_addr_t *addr)
     s_bound_addr    = *addr;
     s_bound         = true;
     s_peer_persisted = false;
+
+    /* Identity only ever arrives in advertising, and bind() has just stopped
+     * the scan -- so without taking it from the caller here, a freshly bound
+     * pack has no name until some later sweep happens to see it again, and
+     * the tab meanwhile shows the PREVIOUS pack's name over the new one's
+     * numbers. Clearing first means an unnamed bind shows nothing rather than
+     * something wrong. */
+    s_peer_name[0] = '\0';
+    s_rssi_dbm     = 0;
+    if (name && name[0]) {
+        snprintf(s_peer_name, sizeof s_peer_name, "%s", name);
+        s_rssi_dbm = rssi;
+    }
     /* NOT persisted yet: see the device-info branch in the worker. A peer
      * that never answers must not survive a reboot. */
     /* A previous pack's numbers must not linger under a new binding. */

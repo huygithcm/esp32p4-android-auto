@@ -104,9 +104,16 @@ typedef enum {
 } jk_feed_result_t;
 
 /* Feed one notification fragment. *out is only written when the result is
- * JK_FEED_SNAPSHOT. Safe to call with len 0. */
+ * JK_FEED_SNAPSHOT. Safe to call with len 0.
+ *
+ * *consumed (may be NULL) receives how many bytes of `data` were taken. On any
+ * result other than JK_FEED_NEED_MORE the call stops at the end of the frame
+ * it completed, so the caller MUST resume at data + *consumed rather than
+ * assuming the slice is finished: the bytes after a completed frame are the
+ * head of the next one, preamble included, and dropping them costs a whole
+ * frame every time a transport chunk straddles a frame boundary. */
 jk_feed_result_t jk_feed(jk_ctx_t *ctx, const uint8_t *data, size_t len,
-                         bms_snapshot_t *out);
+                         bms_snapshot_t *out, size_t *consumed);
 
 #ifdef __cplusplus
 }
