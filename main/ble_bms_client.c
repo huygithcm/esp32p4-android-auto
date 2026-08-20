@@ -67,8 +67,12 @@ static uint16_t            s_cccd_handle;
 static bool                s_scanning;
 static bool                s_connecting;
 static bool                s_subscribed;
-/* One kick per subscription; see the worker's stream comment. */
-static bool                s_stream_kicked;
+/* Bumped by reset_link_state() on every teardown. The worker keeps its own
+ * copy so it can tell a new session from a continuing one without relying on
+ * having observed s_subscribed go false -- which polling at 200 ms would
+ * almost certainly catch, but "almost" is not a guarantee and the cost of
+ * missing it is a session that never kicks its stream. */
+static volatile uint32_t   s_link_gen;
 static ble_bms_scan_cb_t   s_scan_cb;
 static StreamBufferHandle_t s_rx;
 static TaskHandle_t        s_worker;
@@ -121,8 +125,8 @@ static void reset_link_state(void)
     s_chr_end_handle = 0;
     s_cccd_handle    = 0;
     s_subscribed     = false;
-    s_stream_kicked  = false;
     s_logged_full    = false;
+    s_link_gen++;
     s_connecting     = false;
     jk_init(&s_jk);
 }
@@ -449,6 +453,13 @@ static void bms_worker(void *arg)
     int64_t         last_log_us   = 0;
     int64_t         last_rearm_us = 0;
 
+    /* Per-session, reset on every new subscription. */
+    bool            session       = false;
+    uint32_t        seen_gen      = s_link_gen;
+    int64_t         last_probe_us = 0;
+    bool            info_answered = false;
+    bool            kicked        = false;
+
     for (;;) {
         /* NVS on behalf of bind()/unbind(), which run on the LVGL task. */
         if (s_store_peer) { s_store_peer = false; peer_store(&s_bound_addr); }
@@ -492,7 +503,10 @@ static void bms_worker(void *arg)
                 break;
 
             case JK_FEED_DEVICE_INFO:
-                last_rx_us = now;
+                last_rx_us    = now;
+                /* Answered. Whether or not we can use the layout, there is
+                 * nothing left to ask -- see the probe block below. */
+                info_answered = true;
                 /* First proof the bound address is really a JK we can read:
                  * it answered device-info AND we recognise its layout. Only
                  * now is it worth surviving a reboot — persisting at bind
@@ -558,25 +572,40 @@ static void bms_worker(void *arg)
 
         if (!s_subscribed) continue;
 
-        /* Nothing streams until the pack has told us which byte layout it
-         * speaks, so this one command does have to be repeated until it
-         * answers. jk_feed refuses to decode cell data while the layout is
-         * unknown, so there is nothing to listen for yet either way. */
+        /* New subscription: start the session clock here rather than at boot.
+         * The GAP callback has just sent device-info as part of writing the
+         * CCCD, so the retry below must be measured from now -- timing it from
+         * last_rx_us meant the worker saw a several-second-old timestamp on
+         * its very next tick and fired a second device-info immediately, one
+         * extra beep on every single connect. */
+        if (!session || seen_gen != s_link_gen) {
+            session       = true;
+            seen_gen      = s_link_gen;
+            last_probe_us = now;
+            info_answered = false;
+            kicked        = false;
+        }
+
+        /* Nothing streams until the pack has said which byte layout it speaks.
+         * Retry only while it has not answered at all: a pack that answers
+         * with a version we do not recognise is not going to answer any
+         * differently the next time, and re-asking every three seconds would
+         * beep at the rider forever over a fault no amount of asking fixes.
+         * The tab already reads UNSUPPORTED in that case. */
         if (jk_get_proto(&s_jk) == JK_PROTO_UNKNOWN) {
-            if (now - last_rx_us >= (int64_t)PROBE_RETRY_MS * 1000) {
-                last_rx_us = now;
+            if (!info_answered &&
+                now - last_probe_us >= (int64_t)PROBE_RETRY_MS * 1000) {
+                last_probe_us = now;
                 bms_model_diag_bump(BMS_DIAG_TIMEOUT);
                 send_cmd(JK_CMD_DEVICE_INFO);
             }
             continue;
         }
 
-        /* Layout known. Kick the stream exactly once per subscription, then
-         * go quiet -- every command from here on is an audible beep at the
-         * pack. s_stream_kicked is cleared in reset_link_state(), so a
-         * reconnect kicks again and a live link never does. */
-        if (!s_stream_kicked) {
-            s_stream_kicked = true;
+        /* Layout known. Kick the stream exactly once per session, then go
+         * quiet -- every command from here on is an audible beep at the pack. */
+        if (!kicked) {
+            kicked = true;
             ESP_LOGI(TAG, "layout known — starting the stream (no polling "
                           "from here; the pack beeps at every command)");
             send_cmd(JK_CMD_CELL_INFO);

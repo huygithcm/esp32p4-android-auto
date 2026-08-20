@@ -28,293 +28,45 @@ present from work performed in the current session.
 
 ## Entries
 
-### 2026-08-18 23:10 +07:00 - Claude - Stop polling the BMS; the pack beeps at every command
-- Scope: with the C6 link fixed the BLE read path works end to end, and the
-  user found what only real hardware could show -- the pack beeps audibly on
-  every command it receives, so a 1 Hz poll turned the battery into a
-  metronome for as long as the tab was open.
-- Change: the driver no longer polls. After the CCCD write it sends one
-  device-info to learn the layout, then one cell-info to start the stream, and
-  then goes quiet; the pack pushes frames at its own cadence (~1 Hz) unasked.
-  What is left is a silence watchdog at 15 s, deliberately far wider than the
-  pack's own interval so an ordinary skipped frame never fires it -- one beep,
-  and only when something is already wrong.
-- Files: `main/ble_bms_client.c` -- `POLL_INTERVAL_MS`/`RX_TIMEOUT_MS` replaced
-  by `STREAM_SILENCE_MS` (15000) and `PROBE_RETRY_MS` (3000); `s_stream_kicked`
-  gives one kick per subscription and is cleared in `reset_link_state()` so a
-  reconnect kicks again and a live link never does; `ble_bms_set_active` no
-  longer claims to pause polling.
-- On the active gate: it no longer changes what the radio does, and that is the
-  point. Stopping the stream would take a command, so pausing and resuming
-  would cost two beeps to save airtime the pack is spending anyway. It still
-  resets the first-frame dump. `docs/BMS_HARDWARE_BRINGUP.md` step 8 renamed
-  from "poll gate" and rewritten to match, and step 5 now says the pack must be
-  audibly SILENT -- a beep per second means something is polling again, a beep
-  every fifteen means the stream is dying and being restarted.
-- Checks: build exit 0, no warnings, app 0x436fc0 of 0x500000 (16% free).
-  merged.bin regenerated, 0x456fc0. Host parser tests untouched by this change
-  and still 12 groups / 0 failures. Not yet verified against the pack -- the
-  beep is the acceptance test and only the user can hear it.
-- Status: complete pending that listen.
-- Handoff: if the pack still beeps once a second, something other than this
-  worker is sending commands. If it beeps every 15 s the stream is not
-  self-sustaining on this unit and the watchdog is carrying it, which would
-  mean the one-kick assumption is wrong for this hardware generation -- report
-  the interval rather than widening the window, because the fix would be a
-  different command, not a longer timer.
-
-### 2026-08-18 23:10 +07:00 - Codex - Build ESP32-WROOM BT-agent merged image
-- Scope: built the standalone Bluetooth Classic agent for original ESP32
-  (WROOM-32/D1 Mini) and produced one merged image for flashing at offset 0.
-- Files: generated ignored build artifacts under `tools/bt_agent/build/`; no
-  source or shared configuration file was changed. Added only this log entry.
-- Checks: ESP-IDF 5.5.3 target `esp32` build passed; BT-agent app version is
-  `0.6.3`, app size `0xe56a0` with 39% of its app partition free. Esptool 4.12
-  merged bootloader at `0x1000`, partition table at `0x8000`, and app at
-  `0x10000` using DIO/40 MHz/2 MB settings. `image_info` reports ESP32 image
-  checksum and validation hash valid. Output `tools/bt_agent/build/merged.bin`
-  is 1,005,216 bytes; SHA-256
-  `CBC114A8E9A635CD66AD898CAE75E061D9FF40D1DA27752DB1A8D5973911BBBE`.
-- Status: complete.
-- Handoff: flash `merged.bin` to the ESP32-WROOM at address `0x0`; this is not
-  a P4/JC4880 image and must not be flashed to the display MCU.
-
-### 2026-08-18 22:45 +07:00 - Claude - Root-caused the C6 failure: jc4880 sdkconfig had drifted to SPI/esp32h2
-- Scope: user captured a boot log from the board. It settled the OTA-screen
-  question and exposed something worse underneath.
-- What the log showed: `spi: Resetting slave on SPI bus with pin 12`, three
-  failed connection attempts, `fwversion not readable: ESP_FAIL`, then
-  `ESP_ERROR_CHECK failed ... wifi_manager.c line 162 esp_wifi_init` -> abort
-  -> reboot, on a loop. `reset reason: PANIC (4)` on the first captured boot
-  shows it had been looping for a while. The attempt-counter guard committed
-  in 98d781d worked as intended and is visible in the log.
-- Root cause: `build_jc4880/sdkconfig` had drifted from `sdkconfig.defaults` on
-  three settings at once -- SPI instead of SDIO, `esp32h2` instead of `esp32c6`,
-  reset GPIO 12 instead of 54. The firmware was addressing hardware that is not
-  on this board, so the C6 could never answer. `sdkconfig.defaults` only seeds a
-  build directory that does not yet exist; once the file is written, a component
-  upgrade (esp_hosted 2.12.6 -> 2.12.8 here) that renames or re-defaults these
-  Kconfig choices leaves the stale file silently taking the component's new
-  defaults. Nothing warns: the build is clean and every version string matches.
-- Files: `build_jc4880/sdkconfig` regenerated from the defaults (SDIO/C6/GPIO54
-  confirmed by grep); `main/wifi_manager.c` -- `esp_wifi_init` failure returns
-  instead of ESP_ERROR_CHECK, and `wifi_manager_wait_ready` guards the event
-  group it now may not have; `main/main.c` -- caller takes the existing
-  wifi-failed path instead of ESP_ERROR_CHECK, plus two `#error` assertions on
-  the hosted transport and co-processor target so this drift cannot recur
-  silently.
-- Rationale for the wifi change: the Wi-Fi MAC is on the C6, so any C6 fault
-  aborted the P4 into a reboot loop that power-cycling cannot escape, taking
-  the dashboard with it. VESC telemetry arrives over CAN and needs nothing from
-  the C6, so degrading to "no Android Auto" beats bricking the boot.
-- Checks: full rebuild after the config regen, exit 0, no warnings, app
-  0x436eb0 of 0x500000 (16% free). Assertions verified to compile against the
-  corrected config. merged.bin regenerated, 0x456eb0, offset 0x0.
-- Status: complete pending the user reflashing over USB.
-- Handoff: the next boot log decides whether this is finished. Expect the SDIO
-  transport in place of the SPI lines, a readable slave version, and no panic.
-  If the C6 still does not answer over SDIO the fault moves to hardware and the
-  attempt counter will now stop it after two rounds instead of looping. Note
-  for BMS work: NimBLE runs on the C6 through ESP-Hosted VHCI, so until this is
-  confirmed working every step of `docs/BMS_HARDWARE_BRINGUP.md` fails at step
-  1 for reasons unrelated to the BMS. Worth checking whether `build/` (waveshare)
-  carries the same drift -- it was not rebuilt here.
-
-### 2026-08-18 22:20 +07:00 - Claude - Bound the C6 OTA retry; device was stuck on the update screen
-- Scope: user reported the board sitting on "Updating Wi-Fi co-processor" and
-  asked whether a version was wrong. The versions are fine; the loop had no
-  brake.
-- Version audit (all consistent, none of it is the fault):
-  embedded C6 slave blob is 2.12.6 (built 2026-05-05, idf v5.5.3) against host
-  esp_hosted 2.12.8, but `c6_ota.c` compares `(v & 0xFFFFFF00)` and
-  `ESP_HOSTED_VERSION_VAL` packs `(major<<16)|(minor<<8)|patch`, so the patch
-  byte is masked off and 2.12 == 2.12 skips the OTA by design. The BT agent
-  blob emits `BT-VER:0.6.3` and `CONFIG_BT_AGENT_FW_VERSION` is "0.6.3".
-- The actual defect: `main.c` restarts the P4 on `C6_OTA_STATUS_UPDATED`, and
-  nothing bounded that. Any condition that leaves the slave version unreadable
-  or still mismatched after a flash - the `fwversion not readable ... assuming
-  update needed` branch in particular - becomes update, restart, update,
-  restart with the update screen permanently up and no exit but USB.
-- Files: `main/c6_ota.c` - attempt counter in NVS (`c6_ota`/`tries`), max 2,
-  incremented before each OTA, cleared whenever a boot finds the slave already
-  matching (including under `C6_OTA_FORCE`, so the counter cannot disable the
-  thing FORCE asks for). Past the limit it logs at ERROR and returns
-  NOT_REQUIRED, so the board boots with whatever slave firmware it has.
-- Checks: `ninja -C build_jc4880` exit 0, no warnings, app 0x4395d0 of
-  0x500000 (16% free). merged.bin regenerated at 0x4595d0. Not verified on
-  hardware - the user's board is the only instance of this failure.
+### 2026-08-18 23:35 +07:00 - Claude - Audit of the no-poll flow; found three defects in it
+- Scope: user asked for a hard review of the streaming change from 105b95d
+  rather than trusting it. Three defects, two of which still beeped.
+- (1) An unrecognised pack beeped every 3 s forever. The probe block retried
+  device-info whenever the layout was UNKNOWN, but a pack that answers with a
+  version string we do not recognise leaves it UNKNOWN permanently -- so it
+  answered, stayed unsupported, and got asked again three seconds later, on a
+  loop. Now gated on `info_answered`: retry only while the pack has not replied
+  at all. Re-asking cannot fix an unrecognised version, and the tab already
+  reads UNSUPPORTED. This also stops a misleading BMS_DIAG_TIMEOUT bump on a
+  pack that is answering perfectly.
+- (2) Every connect cost one extra beep. The probe retry was measured from
+  `last_rx_us`, which on the worker's first tick after subscribing still held a
+  timestamp from whenever the last frame arrived -- typically many seconds or
+  the boot value. The GAP callback has just sent device-info while writing the
+  CCCD, and 200 ms later the worker sent a second one on top of it. Session
+  state now starts its own clock at the subscription edge.
+- (3) Session state was split across owners. `s_stream_kicked` was a static
+  cleared by `reset_link_state()` on the NimBLE task while the rest of the
+  logic was worker-local. Replaced by worker-locals plus a `s_link_gen`
+  counter the teardown bumps, so the worker detects a new session exactly
+  rather than by having observed `s_subscribed` go false -- 200 ms polling
+  would almost certainly catch a reconnect, but the cost of missing it is a
+  session that never kicks its stream.
+- Files: `main/ble_bms_client.c`.
+- Command budget after the audit, which is the thing to hold to: a healthy
+  session sends exactly TWO commands, both at connect -- device-info from the
+  GAP callback, cell-info to kick the stream -- and nothing afterwards. The
+  probe retry contributes none once the pack answers; the 15 s watchdog
+  contributes none while frames arrive. Four call sites total, verified by
+  grep: lines 170, 600, 611, 627.
+- Checks: build exit 0, no warnings, app 0x437000 of 0x500000 (16% free).
+  merged.bin regenerated, 0x457000. Still unverified against the pack; the
+  beep count at connect is now the acceptance test.
 - Status: complete
-- Handoff: this stops the loop, it does not explain it. The root cause is still
-  open and the log line decides it: `fwversion not readable: <err>` means the
-  SDIO/hosted link to the C6 is failing, while `Slave version: X.Y.Z` with
-  X.Y != 2.12 means a genuine mismatch that the flash is not curing. Worth
-  noting for the BMS work: NimBLE runs on the C6 through ESP-Hosted VHCI, so a
-  C6 that never comes up means no BLE at all and every step of
-  `docs/BMS_HARDWARE_BRINGUP.md` fails at step 1 for a reason that has nothing
-  to do with the BMS. Also observed: CLAUDE.md says BT agent OTA defaults to
-  off, but `sdkconfig.defaults` sets `CONFIG_BT_AGENT_OTA_ENABLED=y`; the
-  Kconfig default is indeed n, so the doc is describing the wrong layer.
-
-### 2026-08-18 21:55 +07:00 - Claude - Re-arm a refused connect; found while re-reading the BE fixes
-- Scope: user asked for a review of the BE changes rather than another build,
-  since Codex was building. The review confirmed the four fixes in `7e523a7`
-  are sound, and turned up a separate defect that predates them.
-- The defect: `arm_connect()` was reached only from connect-failed, disconnect,
-  BLE sync, and bind. When `ble_gap_connect()` returns an error the call never
-  produces a GAP event, so none of those four fire again: `s_connecting` drops
-  back to false with no connection to later disconnect, and the link sits in
-  CONNECTING permanently. Only re-pairing by hand recovers it. The reachable
-  path is boot -- a peer restored from NVS arms on sync while another central
-  procedure still owns the single NimBLE initiator, which is exactly the
-  cadence client. This is Codex's slot-arbitration concern showing up as a
-  concrete boot-time failure, and it would have been the first thing
-  `docs/BMS_HARDWARE_BRINGUP.md` hit.
-- Files: `main/ble_bms_client.c` -- `RECONNECT_RETRY_MS` (5 s) and a re-arm in
-  the worker loop, guarded on bound && !connected && !connecting && !scanning.
-  The scanning guard is deliberate: a user-opened pairing sweep owns the
-  initiator on purpose, and re-arming through it would only log a refusal every
-  five seconds while the rider reads the device list.
-- Verification of the fixes reviewed: every `return` inside `jk_feed`'s byte
-  loop is after `*consumed = i + 1` (the three earlier branches are all
-  `continue`); `decode_cell_info` opens with `memset(out, 0, sizeof *out)`, so
-  two frames in one chunk cannot bleed valid_mask into each other -- rare
-  before, routine now; `hw[2]` is in bounds for any input because
-  `hw_version[16]` and `hw[0]` short-circuits; `s_rssi_dbm` and the new `rssi`
-  parameter are both `int8_t`.
-- Checks: firmware `ninja -C build_jc4880` exit 0, no warnings, app 0x439410 of
-  0x500000 (16% free). Host parser test 12 groups, 0 failures (unchanged --
-  it does not reach this code).
-- Status: complete
-- Handoff: the re-arm has NO automated test. `ble_bms_client.c` cannot link on
-  the host because it depends on NimBLE, so the whole transport/session layer
-  is still unverified except by inspection -- the gap Codex named. Only real
-  hardware settles it: with a bound pack powered off at boot, the log must show
-  "re-arming connect" every 5 s and the tab must reach LIVE within seconds of
-  the pack coming up. Also noted while reviewing: `s_peer_name` now has three
-  writers (GAP handler, bind on the LVGL task, worker reading it). Bounded by
-  snprintf and worth at most one garbled name, but it adds weight to the
-  serialized-owner item rather than relieving it.
-
-### 2026-08-18 21:18 +07:00 - Codex - Rebuild latest BMS HEAD 7e523a7
-- Scope: rebuilt the latest shared HEAD after Claude tightened the JK layout
-  gate and fixed the multi-frame receive path. No source file was edited.
-- Files: only this build record was added; existing dirty FE/contract files
-  were preserved.
-- Checks: JC4880 firmware build passed using Ninja; image size `0x439360`, with
-  `0xc6ca0` bytes (16%) of the app partition free. Desktop simulator build
-  passed and regenerated `build/bin/simulator.exe` and `simulator.dll` after
-  selecting the MSYS2 MinGW32 toolchain explicitly. `git diff --check` passed
-  with only existing LF-to-CRLF conversion warnings.
-- Status: build complete on `7e523a7`.
-- Handoff: no compile or link error remains. Simulator still prints the known
-  non-fatal `uname -s` warning under PowerShell.
-
-### 2026-08-18 21:35 +07:00 - Claude - Act on Codex's review of 41580df; fix a 50% frame loss
-- Scope: took the four BE findings from Codex's 21:00 review. All four were
-  real. The parser/transport one was costing every other reading.
-- Files: `components/bms/bms_jk.c` + `include/bms/bms_jk.h`
-  (layout gate now requires the version dot, so `1123` and `10XW` no longer
-  pass as `11.x`/`10.x`; `jk_feed` gained a `size_t *consumed` out-parameter);
-  `main/ble_bms_client.c` + `.h` (worker resumes at `*consumed`;
-  `BLE_GAP_EVENT_DISC_COMPLETE` leaves SCANNING for UNBOUND/STALE instead of
-  spinning forever; new `ble_bms_bind_named(addr, name, rssi)` carries the scan
-  hit's identity, and both bind forms now clear `s_peer_name`/`s_rssi_dbm`
-  first); `tools/test/test_bms_jk.c` (two new groups).
-- Checks: host test 12 groups, 0 failures. The frame-loss group was verified
-  against the OLD behaviour before being accepted: rebuilding the test with
-  `off += got - off` reports "chunk 128: got 1 snapshots from 2 frames" and
-  "chunk 512" likewise, so the test is not vacuous. Chunk sizes 20/300/7 pass
-  either way, which is why the group sweeps five sizes rather than one - a
-  single-size test would have missed this. Firmware `ninja -C build_jc4880`
-  exit 0, no warnings, app 0x439360 of 0x500000 (16% free).
-- Detail on the transport bug, since the comment in the source asserted the
-  opposite: `jk_feed` returns at the end of each completed frame, but the
-  caller advanced by the whole slice. Transport chunks are 128 bytes against
-  300-byte frames, so a frame ends mid-chunk constantly and the skipped
-  remainder contained the next frame's preamble. Roughly half of all cell
-  frames were being dropped; on the vehicle that is a 2 s update instead of
-  1 s. Nothing in the build or the previous tests could see it because every
-  test fed whole frames.
-- Also of note: two edits in this session wrote a literal newline and a literal
-  NUL into C source because `\n`/`\0` in a heredoc collapsed one level
-  before Python saw them. The compiler caught the first; the second only
-  surfaced as grep reporting "Binary file matches". Both repaired via
-  `chr(92)`, and `main/ble_bms_client.c` verified at 0 NUL bytes.
-- Status: complete
-- Handoff: `ble_bms_bind` keeps its old signature deliberately - the FE tree is
-  dirty and breaking its build mid-edit would be worse than a late adoption of
-  `ble_bms_bind_named`. FE should switch the scan-connect path over to it to
-  get the pack name on first bind. The three FE-side findings in Codex's review
-  (sleep timer mapped but not rendered, alarm duplicated into normalized and
-  raw, balance-current sign against the contract) are untouched here. Central
-  initiator/connection-slot arbitration and one serialized owner for the
-  session globals remain the two open architectural items; both still want the
-  `ble_central_manager` refactor rather than separate patches.
-
-### 2026-08-18 21:00 +07:00 - Codex - Review Claude commit 41580df after BE fixes
-- Scope: reviewed Claude's latest committed BMS parser/client/UI changes at
-  `41580df` and re-ran host, simulator, and JC4880 builds without editing the
-  BE source. Confirmed that unknown layouts are now rejected, peer persistence
-  is delayed until recognised device-info, and a refused scan is visible to FE.
-- Files: inspected `components/bms/bms_jk.c`, `main/ble_bms_client.{c,h}`,
-  `main/ble_host.c`, `main/ble_cadence_client.c`,
-  `Super_VESC_Display/custom/bms_view.c`, `tools/test/test_bms_jk.c`, and the
-  BMS contract/model headers. Only this collaboration-log entry was changed.
-- Checks: JK host parser test passed 10 groups with 0 failures; desktop
-  simulator `mingw32-make -j8 default` passed; `ninja -C build_jc4880` passed
-  (image `0x439280`, 16% free); `git diff --check` passed apart from line-ending
-  conversion warnings on the pre-existing FE-owned dirty files.
-- Status: review complete; real-hardware acceptance remains blocked.
-- Handoff: central initiator/connection-slot arbitration is still absent. A
-  stored offline BMS or the cadence client's forever-connect attempt can block
-  BMS scanning, while the UI can only say to close and retry. Scan completion
-  also leaves the model in SCANNING; selected-device name/RSSI are not carried
-  into `bind` and old identity is not cleared on rebind. The parser layout gate
-  accepts every string beginning `11` or `10` rather than requiring `11.` or
-  `10.`, and the worker can discard the head of a second frame because
-  `jk_feed` returns at the first completed frame without a consumed-byte count.
-  FE still maps sleep timer but never renders it, duplicates the raw JK alarm
-  into both normalized/raw fields, and disagrees with the contract's
-  non-negative balance-current magnitude. Fix and test these before the JK
-  phone-app side-by-side hardware bring-up.
-
-### 2026-08-18 00:35 +07:00 - Claude - Act on Codex's source-vs-log audit; correct a false completion claim
-- Scope: Codex compared this log against the source and found that the strict
-  hardware-layout validation I recorded as done in `9808ad8` was never in the
-  file. Codex was right. My scripted edit's `str.replace` silently matched
-  nothing and I reported success on the strength of an unconditional `print`,
-  so the log asserted a fix that did not exist. Re-applied it and addressed the
-  three other findings from the same audit.
-- Files: `components/bms/bms_jk.c` (layout gate now accepts only known hardware
-  families: `11.x` to 32S, `10.x`/`9.x`/`8.x` to 24S, everything else stays
-  `JK_PROTO_UNKNOWN` and `jk_feed` refuses the cell frame);
-  `main/ble_bms_client.c` + `.h` (`s_peer_persisted` writes NVS only after
-  device-info returns with a recognised layout, so a mis-tap on a neighbour's
-  pack does not come back after reboot; `ble_bms_scan_start` returns `bool` and
-  refuses while `s_connecting`; new `ble_bms_scan_is_active`; header signatures
-  brought back in step with the implementation);
-  `Super_VESC_Display/custom/bms_view.c` (a refused scan now prints
-  "Busy connecting - close and retry" instead of an empty list that is
-  indistinguishable from "no packs in range");
-  `tools/test/test_bms_jk.c` (new group covering the layout gate).
-- Checks: `gcc -std=c11 -Wall -Wextra` host test - 10 groups, PASSED, 0
-  failures; the gate group asserts 8 strings including `"ÿþ garbage"`,
-  `"V2.1"` and `""` all stay UNKNOWN *and* refuse a following cell frame.
-  Firmware `idf.py -B build_jc4880 build` - exit 0, app 0x439280 of 0x500000
-  (16% free). After each scripted edit the script now aborts with
-  `raise SystemExit` when the pattern does not match, and I grep the file to
-  confirm; that is the direct consequence of this audit finding.
-- Status: complete
-- Handoff: three of Codex's findings are addressed; two are deliberately not.
-  (1) Scan/connect-slot arbitration between the BMS client and the cadence
-  client still has no referee - it needs a `ble_central_manager` refactor that
-  touches working code, and the third central slot is genuinely unused on this
-  vehicle. (2) Session globals and persistence flags still lack one serialized
-  control owner; it is the same piece of architecture as (1) and should be done
-  with it rather than patched separately. Neither is safe to leave unfixed if a
-  second central peer is ever added. Nothing on the BMS path has run against a
-  real JK pack yet - `docs/BMS_HARDWARE_BRINGUP.md` is the sequence to follow
-  when the hardware is on the bench.
+- Handoff: expect exactly two beeps when the tab first connects, then silence.
+  Three means something re-probed; a beep every 3 s means an unrecognised
+  layout reached the retry path anyway; every 15 s means the stream is not
+  self-sustaining and the watchdog is carrying it.
 
 ### 2026-08-17 23:48 +07:00 - Codex - Live BE control review after adapter joins
 - Scope: monitored Claude's concurrent BMS work through commits `a9c8977`,
@@ -373,7 +125,7 @@ present from work performed in the current session.
   highlights and stores it in FE state; the disabled `CONNECT` button becomes
   enabled after selection and is the only action that calls the current BE
   bind/connect API.
-- Files: `Super_VESC_Display/custom/bms_view.c`, 
+- Files: `Super_VESC_Display/custom/bms_view.c`,ục 
   `docs/BMS_FE_BE_CONTRACT.md`.
 - Checks: desktop simulator `mingw32-make -j8 default` passed; JC4880
   `ninja -C build_jc4880` passed (image `0x439070`, 16% app partition free);
