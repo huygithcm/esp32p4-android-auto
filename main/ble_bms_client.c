@@ -28,12 +28,20 @@ static const ble_uuid_t *JK_CHR_UUID = BLE_UUID16_DECLARE(0xFFE1);
 static const ble_uuid_t *CCCD_UUID   = BLE_UUID16_DECLARE(0x2902);
 
 #define SCAN_DURATION_MS   10000
-/* The community throttles requests to about a second. Faster buys nothing —
- * JK samples internally on its own schedule — and costs BLE airtime that the
- * C6 shares with Wi-Fi, i.e. with the Android Auto video path. */
-#define POLL_INTERVAL_MS   1000
-/* Two missed polls before we treat the link as suspect and re-probe. */
-#define RX_TIMEOUT_MS      (POLL_INTERVAL_MS * 3)
+/* This driver does NOT poll. A JK pack beeps on every command it receives, so
+ * asking once a second turns the rider's battery into a metronome for as long
+ * as the tab is open. It does not need asking: once the CCCD is written and
+ * the first command has been answered, the pack pushes cell-info frames by
+ * itself at its own cadence (about 1 Hz). One kick, then listen.
+ *
+ * What remains is a watchdog. If the stream dries up we send one command to
+ * restart it -- one beep, and only when something is already wrong. The window
+ * is deliberately much wider than the pack's own interval so an ordinary
+ * skipped frame never triggers it. */
+#define STREAM_SILENCE_MS  15000
+/* Probing for the layout is different: nothing streams until the pack has
+ * answered device-info, so that one really does have to be repeated. */
+#define PROBE_RETRY_MS     3000
 /* How often the worker re-arms a connect that never got off the ground.
  * ble_gap_connect can be refused outright -- NimBLE runs one initiator, so a
  * scan or the cadence client holding it returns an error immediately rather
@@ -59,6 +67,8 @@ static uint16_t            s_cccd_handle;
 static bool                s_scanning;
 static bool                s_connecting;
 static bool                s_subscribed;
+/* One kick per subscription; see the worker's stream comment. */
+static bool                s_stream_kicked;
 static ble_bms_scan_cb_t   s_scan_cb;
 static StreamBufferHandle_t s_rx;
 static TaskHandle_t        s_worker;
@@ -111,6 +121,7 @@ static void reset_link_state(void)
     s_chr_end_handle = 0;
     s_cccd_handle    = 0;
     s_subscribed     = false;
+    s_stream_kicked  = false;
     s_logged_full    = false;
     s_connecting     = false;
     jk_init(&s_jk);
@@ -434,7 +445,6 @@ static void bms_worker(void *arg)
     (void)arg;
     uint8_t         chunk[128];
     bms_snapshot_t  snap;
-    int64_t         last_poll_us  = 0;
     int64_t         last_rx_us    = esp_timer_get_time();
     int64_t         last_log_us   = 0;
     int64_t         last_rearm_us = 0;
@@ -548,14 +558,12 @@ static void bms_worker(void *arg)
 
         if (!s_subscribed) continue;
 
-        /* Do not poll for cell data until device-info has told us which byte
-         * layout this unit speaks. Asking earlier is what the community's
-         * "wait ~1 s after the first command" step exists to avoid, and here
-         * it would be pointless anyway: jk_feed refuses to decode a cell
-         * frame while the layout is unknown, so the reply would be discarded.
-         * The timeout branch below keeps re-asking until it answers. */
+        /* Nothing streams until the pack has told us which byte layout it
+         * speaks, so this one command does have to be repeated until it
+         * answers. jk_feed refuses to decode cell data while the layout is
+         * unknown, so there is nothing to listen for yet either way. */
         if (jk_get_proto(&s_jk) == JK_PROTO_UNKNOWN) {
-            if (now - last_rx_us >= (int64_t)RX_TIMEOUT_MS * 1000) {
+            if (now - last_rx_us >= (int64_t)PROBE_RETRY_MS * 1000) {
                 last_rx_us = now;
                 bms_model_diag_bump(BMS_DIAG_TIMEOUT);
                 send_cmd(JK_CMD_DEVICE_INFO);
@@ -563,20 +571,31 @@ static void bms_worker(void *arg)
             continue;
         }
 
-        /* Nobody is looking: hold the link, stop asking. */
-        if (!s_active) continue;
-
-        if (now - last_poll_us >= (int64_t)POLL_INTERVAL_MS * 1000) {
-            last_poll_us = now;
+        /* Layout known. Kick the stream exactly once per subscription, then
+         * go quiet -- every command from here on is an audible beep at the
+         * pack. s_stream_kicked is cleared in reset_link_state(), so a
+         * reconnect kicks again and a live link never does. */
+        if (!s_stream_kicked) {
+            s_stream_kicked = true;
+            ESP_LOGI(TAG, "layout known — starting the stream (no polling "
+                          "from here; the pack beeps at every command)");
             send_cmd(JK_CMD_CELL_INFO);
+            last_rx_us = now;
+            continue;
         }
 
-        if (now - last_rx_us >= (int64_t)RX_TIMEOUT_MS * 1000) {
+        /* Watchdog only. Re-kick rather than tearing the link down: a
+         * reconnect costs far more than one command, and JK occasionally goes
+         * quiet under load. Deliberately not gated on s_active -- the pack
+         * streams whether or not anyone is looking at the tab, and letting the
+         * stream die while the tab is closed would show stale data the moment
+         * it reopens. */
+        if (now - last_rx_us >= (int64_t)STREAM_SILENCE_MS * 1000) {
             last_rx_us = now;
             bms_model_diag_bump(BMS_DIAG_TIMEOUT);
-            /* Ask again rather than tearing the link down: JK occasionally
-             * skips a reply under load and a reconnect costs far more. */
-            send_cmd(JK_CMD_DEVICE_INFO);
+            ESP_LOGW(TAG, "no frames for %d ms — re-kicking the stream",
+                     STREAM_SILENCE_MS);
+            send_cmd(JK_CMD_CELL_INFO);
         }
     }
 }
@@ -731,9 +750,16 @@ void ble_bms_set_active(bool active)
 {
     if (s_active == active) return;
     s_active = active;
-    ESP_LOGI(TAG, "polling %s", active ? "resumed" : "paused");
-    /* Re-dump on the next frame after a pause: the values will have moved on
-     * and the full dump is what the bring-up session reads. */
+    /* This no longer changes what the radio does. The pack streams on its own
+     * once kicked and the only way to stop it is a command, which beeps -- so
+     * pausing would cost the very noise the streaming design exists to avoid,
+     * twice. The link and the stream stay up; the tab simply stops being
+     * looked at, and reopening it shows a frame that is at most a second old
+     * instead of waiting for a fresh poll. */
+    ESP_LOGI(TAG, "tab %s (stream keeps running either way)",
+             active ? "shown" : "hidden");
+    /* Re-dump on the next frame: the values will have moved on and the full
+     * dump is what the bring-up session reads. */
     if (active) s_logged_full = false;
 }
 

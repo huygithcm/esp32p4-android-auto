@@ -28,6 +28,57 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-18 23:10 +07:00 - Claude - Stop polling the BMS; the pack beeps at every command
+- Scope: with the C6 link fixed the BLE read path works end to end, and the
+  user found what only real hardware could show -- the pack beeps audibly on
+  every command it receives, so a 1 Hz poll turned the battery into a
+  metronome for as long as the tab was open.
+- Change: the driver no longer polls. After the CCCD write it sends one
+  device-info to learn the layout, then one cell-info to start the stream, and
+  then goes quiet; the pack pushes frames at its own cadence (~1 Hz) unasked.
+  What is left is a silence watchdog at 15 s, deliberately far wider than the
+  pack's own interval so an ordinary skipped frame never fires it -- one beep,
+  and only when something is already wrong.
+- Files: `main/ble_bms_client.c` -- `POLL_INTERVAL_MS`/`RX_TIMEOUT_MS` replaced
+  by `STREAM_SILENCE_MS` (15000) and `PROBE_RETRY_MS` (3000); `s_stream_kicked`
+  gives one kick per subscription and is cleared in `reset_link_state()` so a
+  reconnect kicks again and a live link never does; `ble_bms_set_active` no
+  longer claims to pause polling.
+- On the active gate: it no longer changes what the radio does, and that is the
+  point. Stopping the stream would take a command, so pausing and resuming
+  would cost two beeps to save airtime the pack is spending anyway. It still
+  resets the first-frame dump. `docs/BMS_HARDWARE_BRINGUP.md` step 8 renamed
+  from "poll gate" and rewritten to match, and step 5 now says the pack must be
+  audibly SILENT -- a beep per second means something is polling again, a beep
+  every fifteen means the stream is dying and being restarted.
+- Checks: build exit 0, no warnings, app 0x436fc0 of 0x500000 (16% free).
+  merged.bin regenerated, 0x456fc0. Host parser tests untouched by this change
+  and still 12 groups / 0 failures. Not yet verified against the pack -- the
+  beep is the acceptance test and only the user can hear it.
+- Status: complete pending that listen.
+- Handoff: if the pack still beeps once a second, something other than this
+  worker is sending commands. If it beeps every 15 s the stream is not
+  self-sustaining on this unit and the watchdog is carrying it, which would
+  mean the one-kick assumption is wrong for this hardware generation -- report
+  the interval rather than widening the window, because the fix would be a
+  different command, not a longer timer.
+
+### 2026-08-18 23:10 +07:00 - Codex - Build ESP32-WROOM BT-agent merged image
+- Scope: built the standalone Bluetooth Classic agent for original ESP32
+  (WROOM-32/D1 Mini) and produced one merged image for flashing at offset 0.
+- Files: generated ignored build artifacts under `tools/bt_agent/build/`; no
+  source or shared configuration file was changed. Added only this log entry.
+- Checks: ESP-IDF 5.5.3 target `esp32` build passed; BT-agent app version is
+  `0.6.3`, app size `0xe56a0` with 39% of its app partition free. Esptool 4.12
+  merged bootloader at `0x1000`, partition table at `0x8000`, and app at
+  `0x10000` using DIO/40 MHz/2 MB settings. `image_info` reports ESP32 image
+  checksum and validation hash valid. Output `tools/bt_agent/build/merged.bin`
+  is 1,005,216 bytes; SHA-256
+  `CBC114A8E9A635CD66AD898CAE75E061D9FF40D1DA27752DB1A8D5973911BBBE`.
+- Status: complete.
+- Handoff: flash `merged.bin` to the ESP32-WROOM at address `0x0`; this is not
+  a P4/JC4880 image and must not be flashed to the display MCU.
+
 ### 2026-08-18 22:45 +07:00 - Claude - Root-caused the C6 failure: jc4880 sdkconfig had drifted to SPI/esp32h2
 - Scope: user captured a boot log from the board. It settled the OTA-screen
   question and exposed something worse underneath.

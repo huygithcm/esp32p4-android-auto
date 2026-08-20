@@ -32,7 +32,7 @@ across a power cycle, 10 fails only when the pack is off at boot.
 | 5 | Update rate is 1 Hz, not 0.5 Hz | bench, one minute |
 | 6 | Values match the JK app | bench + phone app |
 | 7 | Absent fields show as absent | bench |
-| 8 | Poll gate pauses and resumes | bench |
+| 8 | Tab gate reaches the backend | bench |
 | 9 | Pairing survives a power cycle, a mis-tap does not | bench, power cycle |
 | 10 | Recovers when the pack is off at boot | bench, power cycle |
 | 11 | Coexists with AA and the companion app | **a ride** |
@@ -174,8 +174,14 @@ failing the checksum. Suspect a fragment being dropped: check `dropped`. If
 
 **Do:** leave the tab open for a minute and watch the counters line.
 
-**Pass:** `frames=` climbs by roughly **60 per minute**, one per poll, and
-`dropped=` stays at 0.
+**Pass:** `frames=` climbs by roughly **60 per minute** at the pack's own
+cadence, and `dropped=` stays at 0.
+
+**And listen.** The pack must be **silent**. A JK beeps on every command it
+receives, so this driver sends one to learn the layout, one to start the
+stream, and then nothing -- the frames arrive unasked. A beep once a second
+means something is polling again; a beep every fifteen seconds is the silence
+watchdog, which means the stream is dying and being restarted.
 
 **Fail — `frames` climbs at about half that (25-35/min):** the transport is
 losing every other frame. `jk_feed` stops at the end of each completed frame
@@ -233,22 +239,27 @@ says is invalid must appear as `—`, never as a number.
 
 ---
 
-## 8. The poll gate
+## 8. The tab gate
 
 **Do:** switch to the VESC tab, watch the console. Switch back.
 
 **Pass:**
 
 ```
-I ble_bms: polling paused
+I ble_bms: tab hidden (stream keeps running either way)
 ... quiet ...
-I ble_bms: polling resumed
+I ble_bms: tab shown (stream keeps running either way)
 ```
 
-The link stays up while paused — `connected` should not reappear. Reopening the
-tab should show data within about a second, without a scan or reconnect.
+The link stays up — `connected` must not reappear — and reopening shows a
+reading straight away, because the stream never stopped.
 
-**Fail — no `polling paused`:** the gate is not reaching the backend. The two
+**This gate no longer changes what the radio does**, and that is deliberate.
+Stopping the stream would take a command, and a command beeps; pausing and
+resuming would cost two beeps for nothing. What it still does is reset the
+first-frame dump so the next full listing appears in the log.
+
+**Fail — no `tab hidden` line:** the gate is not reaching the backend. The two
 sides must agree on their initial state; this has broken twice already.
 
 ---
