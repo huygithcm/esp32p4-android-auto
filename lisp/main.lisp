@@ -154,7 +154,14 @@
     (if (= rm-rev-en 1)
         (conf-set 'min-speed (/ (/ rm-rev-speed 10.0) 3.6))))
 (defun rm-load () {
-    (if (= (eeprom-read-i rm-ee-magic) rm-ee-tag) {
+    ; eeprom-read-i answers nil for a slot that was never written, and `=` on
+    ; nil is a type error, not false. On a board that has never stored a ride
+    ; config -- every new board -- comparing it directly would throw here, and
+    ; rm-load runs at load time, so the whole script would fail to start.
+    ; Guard the magic; if it matches, rm-store wrote every field before it, so
+    ; the reads below are known good.
+    (let ((magic (eeprom-read-i rm-ee-magic)))
+    (if (and magic (= magic rm-ee-tag)) {
         (let ((s0 (eeprom-read-i (+ rm-ee-base 0)))
               (c0 (eeprom-read-i (+ rm-ee-base 1)))
               (s1 (eeprom-read-i (+ rm-ee-base 2)))
@@ -177,7 +184,7 @@
                 (print "ride config: loaded from eeprom")
             } (print "ride config: eeprom rejected, using defaults"))
         })
-    } (print "ride config: no eeprom block, using defaults"))
+    } (print "ride config: no eeprom block, using defaults")))
 })
 
 ; Magic last, for the reason above. Runs off the slow persist thread, never

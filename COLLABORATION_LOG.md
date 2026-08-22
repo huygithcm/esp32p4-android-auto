@@ -28,6 +28,49 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-22 19:50 +07:00 - Claude - Checked the Lisp API against the in-repo reference; one more load-time bug
+- Scope: user asked for the source behind the current Lisp and an improvement
+  plan. No LispBM/VESC source is vendored -- `research/_sources/` holds only
+  `esphome-jk-bms` -- so the only reference available is
+  `flutter-application/lib/agent/lisp_reference.dart`, which is curated for
+  this exact script.
+- Found by reading it: `eeprom-read-i` returns **nil** for a slot never
+  written, and `=` on nil is a type error rather than false. `rm-load` runs at
+  load time, so on every board that has not previously stored a ride config --
+  which is all of them -- the script would have thrown and failed to load
+  entirely. Symptom would have been "flashed the script, screen shows nothing",
+  which invites blaming CAN or the display. Guarded: the magic is now tested
+  with `(and magic (= magic rm-ee-tag))`, and since `rm-store` writes every
+  field before the magic, a matching magic makes the rest safe.
+- Confirmed by the reference: `gpio-configure`/`gpio-read` with
+  `'pin-mode-in-pu`, `eeprom-store-i`/`eeprom-read-i`, `conf-set 'max-speed`
+  and `'l-current-max-scale`, `set-current amps delay`, `get-speed` in m/s,
+  `shutdown-hold`. Also confirmed the threading rule "never call set-current
+  from a second thread" is respected: `reverse-step` runs on the monitor thread
+  but only assigns variables, and `deactivate-cruise-control` likewise; the
+  only caller of `reverse-out` is `motor-control-loop`. `pbuf` is touched only
+  from the panel event thread.
+- NOT confirmed, and these are real: `spawn-trap` appears only in the syntax
+  highlighter's keyword list; `'pin-ppm` is absent (the reference documents
+  only `pin-rx`/`pin-tx`); `conf-set 'min-speed` is absent from its parameter
+  list. They are also coupled -- `spawn-trap` exists to contain a wrong
+  `pin-ppm`, so if the first is wrong the guard is gone exactly when needed.
+  A bad `'min-speed` would throw inside the packet handler and kill the panel
+  thread.
+- Files: `lisp/main.lisp` (nil guard), `docs/LISP_VERIFICATION_PLAN.md` (new).
+- Checks: paren/brace balance PASS after the edit. Host tests unaffected and
+  re-run: ride-mode 12 groups PASS, BMS 12 groups PASS.
+- Status: complete
+- Handoff: the plan's step 2 is the highest value per effort and needs no
+  hardware -- clone `vedderb/bldc` and `svenssonjoel/lispBM` into
+  `research/_sources/` and grep for the three unconfirmed symbols. Each is a
+  yes/no that removes one of the risks above. Step 1 (official
+  `lisp_lint_test.dart`) still blocks everything and needs a machine with
+  Flutter. Also logged there: the panel labels still read "Slow 5 km/h" and are
+  now wrong for any edited config, `rm-fault` is never cleared on success, and
+  `0x0A REQ_RIDE_STATUS` is my deviation from the contract that Codex should
+  confirm before FE depends on it.
+
 ### 2026-08-22 19:15 +07:00 - Claude - Review of the ride-mode BE; five defects, two of them safety
 - Scope: user asked for a source review with explicit pass/fail rather than
   another "builds clean". Five defects in code committed an hour earlier at
