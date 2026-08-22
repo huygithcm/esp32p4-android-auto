@@ -10,6 +10,7 @@
 #include "vesc_can/vesc_lisp_poll.h"
 #include "vesc_can/vesc_io_data.h"
 #include "vesc_can/vesc_lisp_panel.h"
+#include "vesc_can/vesc_ride_mode.h"
 #include "sdkconfig.h"
 
 #include "esp_err.h"
@@ -289,6 +290,10 @@ static void rt_task(void *arg)
          * drawer is open) so its multi-frame UI_DESC/STATE replies can't race
          * the polls above into the shared per-id CAN reassembly buffer. */
         vesc_lisp_panel_poll_loop();
+        /* Ride-mode config/status, on this same serialised task and for the
+         * same reason. No-op beyond a 5 Hz status poll unless the editor is
+         * open or the rider pressed Save. */
+        vesc_ride_mode_poll_loop();
         /* PAS setpoint forwarding + watchdog — on this same serialised CAN task.
          * Re-sends the pedal-assist current to the LISP arbiter at ~20 Hz and
          * sends 0 once if the setpoint goes stale (sensor dropped). */

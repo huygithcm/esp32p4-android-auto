@@ -28,6 +28,180 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-22 18:40 +07:00 - Claude - Ride-mode/reverse BE: sections 3-7 done, 8-10 fail-closed
+- Scope: implemented the backend Codex specified in
+  `docs/RIDE_MODE_REVERSE_BE_CONTRACT.md`. Transport and data model complete;
+  reverse implemented but disabled until its pin is confirmed on real hardware.
+- Files: `components/vesc_can/vesc_ride_mode.c` (transport: request queue, seq
+  matching, poll pacing, timeout), `vesc_ride_mode_parse.c` (pure parsers and
+  the range check, split out so the host tests can compile them without
+  FreeRTOS), `include/vesc_can/vesc_ride_mode_wire.h` (wire constants and the
+  parser prototypes), `lisp/main.lisp`, `tools/test/test_ride_mode.c`, plus
+  registration in `CMakeLists.txt`, `main.c` dispatch/init and
+  `vesc_rt_data.c` poll task.
+- Header ownership: `include/vesc_can/vesc_ride_mode.h` is Codex's FE contract
+  and I did not touch it. It changed shape three times while I was building
+  against it -- struct-of-arrays, then mode[] structs, then back -- so the .c
+  was adapted rather than the header edited. Current implementation matches the
+  revision carrying `epoch`/`valid`/`response_seq`/`last_result` and
+  `speed_dkmh[]`; `FORWARD_SPEED_MAX_DKMH` is 1500 there, which makes the Lisp
+  `rm-ceiling` (200 = 20 km/h) the real limit, as section 3 intended.
+- Lisp: data model and EEPROM block at 16..28 with magic written LAST so a
+  power loss mid-write reads as absent rather than half-updated; all-or-nothing
+  load with bounds re-checked on the way in, because a config that validated
+  when written is not automatically valid now. `apply-profile` reads the model.
+  Handlers for 0x07/0x08/0x09 and responses 0x87/0x89; SET refuses in the
+  contract's order, cheap structural checks before anything that can reach
+  `conf-set`. EEPROM writes happen on the existing 2 s persist thread, never in
+  the packet handler.
+- Reverse: state machine, `reverse-out` with its own ramp (sharing `out-rel`
+  would let a forward release tail out as reverse current), and `set-current`
+  with an explicit negative bounded by min(configured, |l-current-min|,
+  l-current-max). `l-current-min-scale` deliberately untouched -- it also
+  scales regen braking. Arbiter is now master-off > brake > direction >
+  throttle > cruise > PAS > coast.
+- Fail-closed on the pin, per section 8: `monitor-reverse` configures
+  `pin-ppm` itself and is spawned with `spawn-trap`, so on a target without
+  that pin the configure throws, that thread alone dies, `rv-hw-ok` stays 0 and
+  SET with reverse_enabled=1 returns UNSUPPORTED_HARDWARE. The motor arbiter
+  and panel are untouched by the failure. No connector pin is hard-coded, and
+  reverse defaults to disabled.
+- Checks: host test `tools/test/test_ride_mode.c` -- 12 groups, 0 failures,
+  `-Wall -Wextra` clean, covering the six cases section 12 asks for. Verified
+  non-vacuous: rebuilt against a copy with the length check weakened to 8 bytes
+  and the profile bound removed, which produces 22 failures. Existing BMS
+  parser tests still 12 groups / 0 failures. Firmware build exit 0, no new
+  warnings, app 0x4396c0 of 0x500000 (16% free). Lisp: paren/brace balance
+  checked, and the linter's E_MUTABLE_BELOW_CONST rule replicated locally --
+  no mutable def below `@const-start`. `flutter` is not on PATH here, so the
+  official `lisp_lint_test.dart` has NOT been run.
+- Status: sections 3-7 and 11-12 complete; 8-10 implemented but inert until the
+  hardware is confirmed.
+- Handoff: (1) run `flutter test test/lisp_lint_test.dart` where Flutter is
+  available -- `lisp/main.lisp` is that test's golden fixture and my local
+  replication only covers one of its rules. (2) None of the Lisp has executed
+  on a VESC; `spawn-trap` and `pin-ppm` are the two calls I could not verify
+  from here, and the first protects the second. (3) The connector pin for the
+  reverse button is still unknown and must not be guessed -- ESC model or
+  schematic needed before section 12's bench sequence. (4) `lisp/README.md` is
+  not yet updated for the editable speeds; the panel labels still read the old
+  fixed "Slow 5 km/h" strings, which are now only correct for the defaults.
+
+### 2026-08-22 17:35 +07:00 - Codex - Raise ride-mode setting ceiling to 150 km/h
+- Scope: apply the user's requested maximum selectable forward speed across
+  the shared FE/BE validation model and refresh the interactive simulator.
+- Files: changed `VESC_RIDE_FORWARD_SPEED_MAX_DKMH` from 200 to 1500 in
+  `components/vesc_can/include/vesc_can/vesc_ride_mode.h`; updated the limit
+  description in `docs/RIDE_MODE_REVERSE_BE_CONTRACT.md`.
+- Checks: incremental Windows simulator build linked successfully; the refreshed
+  process PID 5640 is alive and responding. `git diff --check` passed.
+- Status: complete
+- Handoff: 150 km/h is a protocol/UI ceiling, not a claim that this 40 V vehicle
+  can safely reach it. Lisp/ESC must still enforce vehicle-specific ERPM,
+  voltage, motor, tyre and drivetrain limits.
+
+### 2026-08-22 17:29 +07:00 - Codex - Ride-mode UI simulator launched
+- Scope: rebuild and launch the desktop LVGL simulator so the user can test the
+  new Ride Modes/Reverse screen interactively from the normal dashboard.
+- Files: no source files changed. Build artifacts under
+  `Super_VESC_Display/lvgl-simulator/build/` were refreshed.
+- Checks: compiled the four changed custom objects, then
+  `mingw32-make -j4 default` linked `simulator.exe` and `simulator.dll`
+  successfully. Launched the new executable (1,774,343 bytes, timestamp 17:28)
+  and confirmed process PID 5816 remains alive and responding.
+- Status: complete
+- Handoff: test via `Settings -> Ride modes -> Open`; leave the simulator
+  process open for the user's interaction.
+
+### 2026-08-22 17:35 +07:00 - Codex - Ride-mode/reverse frontend implemented
+- Scope: add an on-device editor for three forward ride profiles and reverse,
+  reachable from the existing scrollable Settings screen, while keeping Lisp
+  as the only safety and persistence authority.
+- Files: added `Super_VESC_Display/custom/ride_mode_screen.c` and
+  `Super_VESC_Display/custom/ride_mode_backend_stub.c`; added the shared public
+  model/API in `components/vesc_can/include/vesc_can/vesc_ride_mode.h`; added
+  the `Ride modes -> Open` entry/declaration in `custom.c` and `custom.h`.
+- Behaviour: Mode 1/2/3 tabs edit speed and motor-current scale independently;
+  Reverse edits enable/speed/current and shows live physical-button, interlock
+  and direction state. Every tab scrolls vertically. Edits stay local until
+  one atomic Save; ACK/refusal is matched by sequence and the screen adopts the
+  VESC-returned config. Reload, timeout, persist-pending and old-Lisp/unavailable
+  states have explicit UI feedback. Desktop builds get a weak in-memory fixture;
+  real-device weak fallbacks fail closed and are replaced by Claude's strong BE.
+- Coordination: Claude created/edited the transport integration concurrently
+  (`vesc_ride_mode.c`, `vesc_rt_data.c`, `main.c`, component CMake). Codex did
+  not edit those BE files and aligned the FE header to their current
+  `valid/epoch/response_seq/last_result` snapshot ABI. At this handoff,
+  `vesc_ride_mode.c` still includes `vesc_ride_mode_backend.h`, but that header
+  is temporarily absent from the working tree; Claude must restore it or fold
+  its private declarations into the implementation before build.
+- Checks: repository-wide symbol search and `git diff --check` passed. Build,
+  simulator and hardware run were intentionally not performed because the user
+  requested implementation without running it yet.
+- Status: FE complete; integrated runtime verification pending BE completion.
+
+### 2026-08-22 17:00 +07:00 - Codex - BE implementation contract for ride modes and reverse
+- Scope: turn the ride-mode/reverse analysis into a concrete Claude handoff
+  covering data ownership, VP messages, P4 backend API, Lisp EEPROM layout,
+  GPIO wiring/state machine, motor arbitration and acceptance tests.
+- Files: added `docs/RIDE_MODE_REVERSE_BE_CONTRACT.md`; no BE or FE source was
+  changed.
+- Checks: cross-checked all proposed message IDs against current `0x01..0x06`
+  handlers, current RX/TX/ADC ownership, `VLP_MAX_CTRLS`, parser/threading rules
+  and the existing dashboard polling path; `git diff --check` pending below.
+- Status: complete
+- Handoff: Claude can implement sections 3 through 13. Exact physical connector
+  pin remains conditional on the ESC model/schematic; code must refer to
+  `pin-ppm`, fail closed when unavailable and never guess a connector pin.
+
+### 2026-08-22 16:52 +07:00 - Codex - UI placement and reverse-button wiring review
+- Scope: audit the current dashboard/settings/realtime screens and the physical
+  inputs consumed by `main.lisp` before adding editable ride-mode speeds and a
+  reverse control.
+- Files: inspected `Super_VESC_Display/custom/custom.c`,
+  `Super_VESC_Display/custom/realtime_viewer.c`,
+  `Super_VESC_Display/custom/vesc_tool_menu.c`, generated dashboard layout and
+  `lisp/main.lisp`. No FE/BE source was changed.
+- Findings: Realtime contains read-only VESC/BMS tabs; the dashboard mode pill
+  is deliberately read-only; Settings is a vertically scrollable screen and is
+  the correct place for a `Ride Modes` entry leading to a dedicated editor.
+  ESC RX is already the cruise button and TX is mode-cycle/cruise-down. ADC1/2
+  are throttle/brake, so none should be shared with reverse.
+- Checks: inspected current dirty diffs before review and traced all three
+  profile-selection inputs plus the current GPIO configuration. Official VESC
+  Lisp sources confirm `pin-ppm` is a usable digital GPIO on supported hardware.
+- Status: observation
+- Handoff: preferred physical reverse input is a normally-open momentary button
+  from the unused ESC PPM signal to ESC GND, configured as input-pull-up, only
+  after confirming the exact ESC model/pinout and that PPM is unused. Never feed
+  5 V, pack voltage or an external ground into that signal. Use hold-to-run plus
+  stationary/throttle-release/brake interlocks in Lisp; exact connector pin
+  number remains blocked on the ESC model or a clear connector photo.
+
+### 2026-08-22 16:42 +07:00 - Codex - Mode-speed and reverse-control design review
+- Scope: review the current Lisp profile and motor-arbiter paths, then define
+  how the display can set each mode's speed directly and safely add reverse.
+- Files: inspected `lisp/main.lisp`, `lisp/README.md`,
+  `docs/VEHICLE_CALIBRATION_MAIN_LISP.md`, and the generated VESC 6.05/6.06/7.00
+  configuration tables. No source file was changed.
+- Findings: profiles are currently hard-coded at 5/10/20 km/h and also couple
+  speed to 30/60/100% of `Motor Current Max`; only the forward `max-speed` is
+  changed, normal throttle/PAS are forward-only, and profile values do not
+  survive a script restart. The existing VP type-3 NUMBER control already
+  supports direct numeric editing. Official VESC Lisp exposes both
+  `conf-set 'max-speed` and `conf-set 'min-speed` in m/s; `min-speed` is
+  converted to a negative `l_min_erpm` internally.
+- Checks: ran repository searches over the Lisp, UI protocol, and generated
+  VESC config tables; cross-checked the official VESC Lisp extension source.
+- Status: observation
+- Handoff: implement profile speeds as validated persisted data, separate
+  speed from current/torque scaling, and implement reverse as a hold-to-run
+  direction state (not a fourth ride mode). Require near-zero speed, released
+  throttle and brake/explicit interlock before entering reverse; disable
+  cruise and PAS in reverse. Conservative first bench limits for the user's
+  70 A motor limit are 3 km/h and 10% current (7 A), with a hard UI/Lisp cap of
+  5 km/h and 20% (14 A) until vehicle tests validate more.
+
 ### 2026-08-18 23:35 +07:00 - Claude - Audit of the no-poll flow; found three defects in it
 - Scope: user asked for a hard review of the streaming change from 105b95d
   rather than trusting it. Three defects, two of which still beeped.

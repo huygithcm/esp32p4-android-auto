@@ -77,6 +77,7 @@ void port_start_app_hook(void)
 #include "vesc_can/vesc_io_data.h"
 #include "vesc_can/vesc_lisp_code.h"
 #include "vesc_can/vesc_lisp_panel.h"
+#include "vesc_can/vesc_ride_mode.h"
 #include "vesc_config/vesc_config.h"
 #include "vesc_config/vesc_config_transport.h"
 #include "vesc_sim.h"
@@ -204,6 +205,10 @@ static void vesc_packet_dispatch(const uint8_t *data, unsigned int len)
     /* LISP quick-action panel UI_DESC/STATE replies (COMM_CUSTOM_APP_DATA +
      * 'VP' magic). Gates internally; ignores everything else. */
     vesc_lisp_panel_process_response(data, len);
+    /* Ride-mode config/status replies. Same COMM_CUSTOM_APP_DATA + 'VP'
+     * channel as the panel, different message ids (0x87/0x89); each gates on
+     * its own and ignores the other's traffic. */
+    vesc_ride_mode_process_response(data, len);
     ble_nus_forward_response(data, (uint16_t)len);
 }
 
@@ -472,6 +477,9 @@ void app_main(void)
         /* LISP quick-action panel (swipe-out drawer driven by the master
          * LISP script). Reply CAN id is fetched live from comm_can. */
         vesc_lisp_panel_init(tgt_id);
+        /* Ride-mode/reverse backend. Lisp owns the config and the
+         * interlocks; this only asks, submits and reports. */
+        vesc_ride_mode_init(tgt_id);
         comm_can_set_packet_handler(vesc_packet_dispatch);
         vesc_rt_data_start();
         vesc_rt_data_start_task();

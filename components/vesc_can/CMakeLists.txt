@@ -10,6 +10,8 @@ idf_component_register(
         "vesc_lisp_code.c"
         "vesc_lisp_console.c"
         "vesc_lisp_panel.c"
+        "vesc_ride_mode.c"
+        "vesc_ride_mode_parse.c"
     INCLUDE_DIRS
         "include"
     REQUIRES

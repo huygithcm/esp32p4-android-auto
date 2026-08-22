@@ -40,6 +40,39 @@
 (def pas-amps 0.0)
 (def pas-seen 0)
 (def pas-src -1)
+; ---- ride-mode config (see docs/RIDE_MODE_REVERSE_BE_CONTRACT.md) ----------
+; Speeds are km/h x 10, current scale is per-mille of Motor Current Max, so the
+; wire, the EEPROM and the screen all hold the same integers and a number the
+; rider typed cannot come back a rounding step away.
+; Defaults reproduce the previous hard-coded behaviour exactly.
+(def rm-s0 50)  (def rm-c0 300)
+(def rm-s1 100) (def rm-c1 600)
+(def rm-s2 200) (def rm-c2 1000)
+(def rm-rev-en 0)
+(def rm-rev-speed 30)
+(def rm-rev-cur 70)
+(def rm-revision 0)
+(def rm-persist 0)     ; EEPROM still owes a write
+(def rm-fault 0)       ; result code of the last refusal, 0 = none
+; Vehicle calibration. THE speed ceiling: the P4 range check is deliberately
+; permissive so this stays the single limit to re-derive when the wheel or
+; motor changes.
+(def rm-ceiling 200)   ; 20.0 km/h
+; ---- reverse runtime ------------------------------------------------------
+(def rv-dir 1)         ; 1 forward, 0 interlock/coast, -1 reverse
+(def rv-btn 0)         ; debounced, 1 = pressed
+(def rv-btn-raw 0)
+(def rv-btn-count 0)
+(def rv-armed 0)
+(def rv-rel 0.0)       ; reverse slew state, mirrors out-rel
+(def rv-brake-ticks 0)
+; Safe start, the reverse twin of `armed`: a button shorted to GND since boot
+; must not arm reverse. Nothing happens until it has been seen released once.
+(def rv-seen-release 0)
+; Set by the monitor thread only after gpio-configure has returned. If the
+; target does not expose pin-ppm the thread dies there and this stays 0, which
+; is what makes reverse report UNSUPPORTED_HARDWARE instead of guessing a pin.
+(def rv-hw-ok 0)
 ; @const-start flashes every definition below, freeing the cons heap. Without it
 ; all the defun bodies live in RAM and exhaust the heap — panel-event-loop then
 ; OOMs at runtime and the display goes blank while motor control keeps running.
@@ -53,23 +86,19 @@
 ; Profiles scale the current limit instead of overwriting it: Motor Current Max
 ; in VESC Tool stays the master value (applied live, no LISP restart) and each
 ; profile is a fraction of it. Braking is never scaled — always full.
+(defun rm-speed-of (i) (if (= i 0) rm-s0 (if (= i 1) rm-s1 rm-s2)))
+(defun rm-cur-of   (i) (if (= i 0) rm-c0 (if (= i 1) rm-c1 rm-c2)))
+; max-speed and min-speed take m/s; the firmware stores min-speed as a negative
+; erpm limit itself. Speed limiting stays a soft current taper, not a speed PID:
+; it will not brake the bike downhill, and that is deliberate.
 (defun apply-profile (profile-index) {
-    (if (= profile-index 0) {
-        (conf-set 'max-speed (/ 5.0 3.6))
-        (conf-set 'l-current-max-scale 0.3)
-        (print "Profile 0: Slow (5 km/h, 30% current)")
-    } {
-        (if (= profile-index 1) {
-            (conf-set 'max-speed (/ 10.0 3.6))
-            (conf-set 'l-current-max-scale 0.6)
-            (print "Profile 1: Medium (10 km/h, 60% current)")
-        } {
-            (if (= profile-index 2) {
-                (conf-set 'max-speed (/ 20.0 3.6))
-                (conf-set 'l-current-max-scale 1.0)
-                (print "Profile 2: Fast (20 km/h, 100% current)")
-            })
-        })
+    (let ((sp (rm-speed-of profile-index))
+          (cu (rm-cur-of profile-index))) {
+        (conf-set 'max-speed (/ (/ sp 10.0) 3.6))
+        (conf-set 'l-current-max-scale (/ cu 1000.0))
+        (print (str-merge "Profile " (to-str profile-index) ": "
+                          (to-str (/ sp 10.0)) " km/h, "
+                          (to-str (/ cu 10.0)) "% current"))
     })
     (if (= first-profile-init 0) {
         (let ((beep-freq (if (= profile-index 0) {
@@ -87,6 +116,81 @@
     } {
         (setq first-profile-init 0)
     })
+})
+; ---- ride config persistence ----------------------------------------------
+; Address 0 belongs to the beep volume; this block starts at 16. Magic is
+; written LAST so a write cut short by a power loss reads back as absent rather
+; than as a half-updated config.
+(def rm-ee-magic 16)
+(def rm-ee-rev   17)
+(def rm-ee-sum   18)
+(def rm-ee-base  20)          ; 20..28, in the order below
+(def rm-ee-tag   0x524D01)    ; 'RM' + format version 1
+
+(defun rm-checksum ()
+    (mod (+ rm-s0 rm-c0 rm-s1 rm-c1 rm-s2 rm-c2
+            rm-rev-en rm-rev-speed rm-rev-cur) 65536))
+
+; Bounds are re-checked on the way IN as well as on the way out: EEPROM can be
+; stale from an older format or simply corrupt, and a config that passed
+; validation when it was written is not automatically valid now.
+(defun rm-values-ok (s0 c0 s1 c1 s2 c2 re rs rc)
+    (and (>= s0 10) (<= s0 rm-ceiling) (>= c0 100) (<= c0 1000)
+         (>= s1 10) (<= s1 rm-ceiling) (>= c1 100) (<= c1 1000)
+         (>= s2 10) (<= s2 rm-ceiling) (>= c2 100) (<= c2 1000)
+         (<= s0 s1) (<= s1 s2)
+         (or (= re 0) (= re 1))
+         (>= rs 10) (<= rs 50)
+         (>= rc 10) (<= rc 140)))
+
+; All-or-nothing: a single bad field means the whole stored block is ignored
+; and the defaults stand. Mixing a trusted default with an untrusted stored
+; value is how a config nobody ever chose ends up driving the motor.
+(defun rm-load () {
+    (if (= (eeprom-read-i rm-ee-magic) rm-ee-tag) {
+        (let ((s0 (eeprom-read-i (+ rm-ee-base 0)))
+              (c0 (eeprom-read-i (+ rm-ee-base 1)))
+              (s1 (eeprom-read-i (+ rm-ee-base 2)))
+              (c1 (eeprom-read-i (+ rm-ee-base 3)))
+              (s2 (eeprom-read-i (+ rm-ee-base 4)))
+              (c2 (eeprom-read-i (+ rm-ee-base 5)))
+              (re (eeprom-read-i (+ rm-ee-base 6)))
+              (rs (eeprom-read-i (+ rm-ee-base 7)))
+              (rc (eeprom-read-i (+ rm-ee-base 8)))) {
+            (if (and (= (eeprom-read-i rm-ee-sum)
+                        (mod (+ s0 c0 s1 c1 s2 c2 re rs rc) 65536))
+                     (rm-values-ok s0 c0 s1 c1 s2 c2 re rs rc)) {
+                (setq rm-s0 s0) (setq rm-c0 c0)
+                (setq rm-s1 s1) (setq rm-c1 c1)
+                (setq rm-s2 s2) (setq rm-c2 c2)
+                (setq rm-rev-en re)
+                (setq rm-rev-speed rs)
+                (setq rm-rev-cur rc)
+                (setq rm-revision (eeprom-read-i rm-ee-rev))
+                (print "ride config: loaded from eeprom")
+            } (print "ride config: eeprom rejected, using defaults"))
+        })
+    } (print "ride config: no eeprom block, using defaults"))
+})
+
+; Magic last, for the reason above. Runs off the slow persist thread, never
+; from the packet handler: a flash write inside the motor loop's period is how
+; a control tick gets missed.
+(defun rm-store () {
+    (eeprom-store-i rm-ee-magic 0)
+    (eeprom-store-i (+ rm-ee-base 0) rm-s0)
+    (eeprom-store-i (+ rm-ee-base 1) rm-c0)
+    (eeprom-store-i (+ rm-ee-base 2) rm-s1)
+    (eeprom-store-i (+ rm-ee-base 3) rm-c1)
+    (eeprom-store-i (+ rm-ee-base 4) rm-s2)
+    (eeprom-store-i (+ rm-ee-base 5) rm-c2)
+    (eeprom-store-i (+ rm-ee-base 6) rm-rev-en)
+    (eeprom-store-i (+ rm-ee-base 7) rm-rev-speed)
+    (eeprom-store-i (+ rm-ee-base 8) rm-rev-cur)
+    (eeprom-store-i rm-ee-sum (rm-checksum))
+    (eeprom-store-i rm-ee-rev rm-revision)
+    (eeprom-store-i rm-ee-magic rm-ee-tag)
+    (setq rm-persist 0)
 })
 (gpio-configure 'pin-rx 'pin-mode-in-pu)
 (gpio-configure 'pin-tx 'pin-mode-in-pu)
@@ -229,6 +333,10 @@
         (sleep 0.05)
     })
 })
+; Config first, then the profile that uses it. Boot always lands on mode 0
+; whatever was in force before: waking up in the fastest mode is not a
+; behaviour anyone asked for.
+(rm-load)
 (apply-profile 0)
 (spawn 150 update-rpm-per-ms)
 (spawn 150 monitor-rx-button)
@@ -236,6 +344,36 @@
 (defun pu8  (v) { (bufset-u8  pbuf pi v) (setq pi (+ pi 1)) })
 (defun pi32 (v) { (bufset-i32 pbuf pi (to-i32 v)) (setq pi (+ pi 4)) })
 (defun pstr (s) { (bufcpy pbuf pi s 0 (buflen s)) (setq pi (+ pi (buflen s))) })
+; Big-endian u16, built from two u8 writes so it uses nothing this script has
+; not already proven on this firmware.
+(defun pu16 (v) { (pu8 (mod (/ v 256) 256)) (pu8 (mod v 256)) })
+(defun rm-send-config (reply-id seq result) {
+    (setq pi 0)
+    (pu8 0x56) (pu8 0x50) (pu8 0x87)
+    (pu16 seq) (pu8 result) (pu8 1)
+    (pu16 rm-revision)
+    (pu16 rm-s0) (pu16 rm-c0)
+    (pu16 rm-s1) (pu16 rm-c1)
+    (pu16 rm-s2) (pu16 rm-c2)
+    (pu8 rm-rev-en)
+    (pu16 rm-rev-speed) (pu16 rm-rev-cur)
+    (pu8 rm-persist)
+    (send-data pbuf 2 reply-id)
+})
+; Sent after SELECT and on the dashboard's own cadence. active-speed is what is
+; actually applied, not what the profile says it should be, so a mismatch is
+; visible rather than assumed away.
+(defun rm-send-status (reply-id) {
+    (setq pi 0)
+    (pu8 0x56) (pu8 0x50) (pu8 0x89)
+    (pu16 rm-revision)
+    (pu8 current-profile)
+    (pu16 (rm-speed-of current-profile))
+    (pu8 (if (= rv-dir -1) 255 rv-dir))   ; i8 on the wire
+    (pu8 rv-btn) (pu8 rv-armed)
+    (pu8 rm-persist) (pu8 rm-fault)
+    (send-data pbuf 2 reply-id)
+})
 (defun panel-send-ui (reply-id) {
     (setq pi 0)
     (pu8 0x56) (pu8 0x50) (pu8 0x81) (pu8 1) (pu8 6)
@@ -312,6 +450,61 @@
         ((= cid 11) (panel-set-profile 1))
         ((= cid 12) (panel-set-profile 2)))
 })
+; SET is a whole transaction. Refusing tells the rider which rule they broke;
+; silently accepting a different config than the one they submitted is the one
+; outcome that must never happen, because the screen would then show numbers
+; the vehicle is not using.
+;
+; Order matters: cheap structural checks first, then the ones that depend on
+; how the vehicle is moving, so a malformed packet can never reach the code
+; that touches conf-set.
+(defun rm-apply-set (data reply-id seq) {
+    (let ((res
+        (cond
+            ; 6 header + 1 fmt + 12 modes + 1 + 2 + 2 = 24
+            ((< (buflen data) 24) 1)
+            ((not (= (bufget-u8 data 6) 1)) 2)
+            (t (let ((s0 (bufget-u16 data 7))  (c0 (bufget-u16 data 9))
+                     (s1 (bufget-u16 data 11)) (c1 (bufget-u16 data 13))
+                     (s2 (bufget-u16 data 15)) (c2 (bufget-u16 data 17))
+                     (re (bufget-u8  data 19))
+                     (rs (bufget-u16 data 20)) (rc (bufget-u16 data 22)))
+                (cond
+                    ((not (or (= re 0) (= re 1))) 3)
+                    ((or (< s0 10) (> s0 rm-ceiling) (< c0 100) (> c0 1000)
+                         (< s1 10) (> s1 rm-ceiling) (< c1 100) (> c1 1000)
+                         (< s2 10) (> s2 rm-ceiling) (< c2 100) (> c2 1000)
+                         (< rs 10) (> rs 50) (< rc 10) (> rc 140)) 3)
+                    ((or (> s0 s1) (> s1 s2)) 4)
+                    ; A config change re-scales the current limit and the speed
+                    ; ceiling under whatever the motor is doing right now, so it
+                    ; is only taken at a standstill with the throttle released.
+                    ((> (abs (get-speed)) 0.083) 5)
+                    ((> (get-adc-decoded 0) 0.05) 6)
+                    ((not (= rv-dir 1)) 7)
+                    ; Asking for reverse on a target whose pin never came up is
+                    ; refused rather than stored and quietly ignored later.
+                    ((and (= re 1) (= rv-hw-ok 0)) 9)
+                    (t {
+                        (setq rm-s0 s0) (setq rm-c0 c0)
+                        (setq rm-s1 s1) (setq rm-c1 c1)
+                        (setq rm-s2 s2) (setq rm-c2 c2)
+                        (setq rm-rev-en re)
+                        (setq rm-rev-speed rs)
+                        (setq rm-rev-cur rc)
+                        (setq rm-revision (mod (+ rm-revision 1) 65536))
+                        ; Apply before persisting: the rider feels the change
+                        ; on the next twist whether or not flash cooperates.
+                        (apply-profile current-profile)
+                        (conf-set 'min-speed (/ (/ rm-rev-speed 10.0) 3.6))
+                        (setq rm-persist 1)
+                        0
+                    })))))))
+        {
+            (setq rm-fault res)
+            (rm-send-config reply-id seq res)
+        })
+})
 (defun panel-handle (data) {
     (if (and (>= (buflen data) 4)
              (= (bufget-u8 data 0) 0x56)
@@ -351,6 +544,16 @@
                     ; needs to know it — and answer with fresh STATE.
                     (panel-set-throttle (if (= throttle-on 1) 0 1))
                     (panel-send-state reply-id)
+                })
+                ((= msg 0x07) (rm-send-config reply-id (bufget-u16 data 4) 0))
+                ((= msg 0x08) (rm-apply-set data reply-id (bufget-u16 data 4)))
+                ((= msg 0x09) {
+                    ; Changing the forward profile while rolling is allowed --
+                    ; it only re-scales limits -- but changing DIRECTION is not,
+                    ; and reverse owns the direction while it is engaged.
+                    (if (and (>= (buflen data) 7) (= rv-dir 1))
+                        (panel-set-profile (bufget-u8 data 6)))
+                    (rm-send-status reply-id)
                 })
                 ((= msg 0x02)
                     (let ((cid (bufget-u8 data 4))
@@ -411,6 +614,104 @@
         (setq brk-rel (slew brk-rel target (ramp-pos) (ramp-neg))))
     (set-brake-rel brk-rel)
 })
+; Reverse current ceiling. Three limits, whichever is smallest: what the rider
+; configured, what the motor config allows in the negative direction, and the
+; forward maximum. l-current-min-scale is deliberately NOT touched per mode --
+; it also scales regenerative braking, and quietly halving the brake to slow
+; the reverse would be a genuinely dangerous trade.
+(defun reverse-limit ()
+    (let ((imin (abs (conf-get 'l-current-min)))
+          (imax (conf-get 'l-current-max)))
+        (clampf (/ rm-rev-cur 10.0) 0.0 (if (< imin imax) imin imax))))
+
+; Reverse output. A separate ramp from out-rel: sharing it would let a throttle
+; release that is still tailing off forward come back out as reverse current.
+; set-current with an explicit negative value, never set-current-rel, so the
+; magnitude is bounded by reverse-limit and not by the profile scale.
+(defun reverse-out (thr) {
+    (setq out-rel 0.0)
+    (let ((target (if (and (= rv-dir -1) (> thr 0.05)) thr 0.0)))
+        (setq rv-rel (slew rv-rel target (ramp-pos) (ramp-neg))))
+    (set-current (* (- 0.0 rv-rel) (reverse-limit)) 0.2)
+})
+
+; The state machine of contract section 9, evaluated once per monitor tick.
+; Everything here is a permission to produce torque; nothing here brakes the
+; bike. Releasing the button ramps current to zero and leaves the rider on the
+; brake lever, which is where stopping belongs.
+(defun reverse-step () {
+    (let ((sp  (get-speed))            ; m/s, signed
+          (thr (get-adc-decoded 0))
+          (brk (get-adc-decoded 1))) {
+        (if (or (= rm-rev-en 0) (= rv-hw-ok 0) (= rv-seen-release 0)) {
+            ; Feature off, no pin, or the button has been held since boot.
+            (setq rv-dir 1) (setq rv-armed 0) (setq rv-brake-ticks 0)
+        } {
+            (cond
+                ((= rv-btn 0) {
+                    ; Released. Interlock until the bike has actually stopped
+                    ; and the throttle is back at rest, so a rider still rolling
+                    ; backwards cannot be handed forward torque.
+                    (setq rv-armed 0) (setq rv-brake-ticks 0)
+                    (if (not (= rv-dir 1))
+                        (if (and (< (abs sp) 0.083) (< thr 0.05))
+                            (setq rv-dir 1)
+                            (setq rv-dir 0)))
+                })
+                ((> sp 0.083) {
+                    ; Pressed while still moving forward: interlock only. This
+                    ; is the case that must never produce negative current.
+                    (setq rv-armed 0) (setq rv-brake-ticks 0)
+                    (setq rv-dir 0)
+                })
+                (t {
+                    ; Stopped and held. Arm on a deliberate brake hold, then run
+                    ; once the brake is released and the throttle is twisted.
+                    (if (> brk 0.05)
+                        (setq rv-brake-ticks (+ rv-brake-ticks 1))
+                        (setq rv-brake-ticks 0))
+                    (if (>= rv-brake-ticks 20) (setq rv-armed 1))
+                    (if (and (= rv-armed 1) (< brk 0.05))
+                        (setq rv-dir -1)
+                        (if (not (= rv-dir -1)) (setq rv-dir 0)))
+                }))
+        })
+        ; Anything other than plain forward takes the bike off cruise and PAS
+        ; for good, not just for this tick: both would otherwise keep asking for
+        ; forward torque underneath the interlock.
+        (if (not (= rv-dir 1)) {
+            (if (= cruise-active 1) (deactivate-cruise-control))
+            (setq pas-amps 0.0)
+            (setq pas-src -1)
+        })
+    })
+})
+
+; 100 Hz, matching the motor loop. Debounce is 4 ticks -- 40 ms, inside the
+; 30..50 ms the contract asks for.
+;
+; The pin is configured HERE rather than at load time, and this thread is
+; spawned with spawn-trap: on a target that does not expose pin-ppm the
+; configure throws, this thread alone dies, and rv-hw-ok stays 0 so reverse
+; reports UNSUPPORTED_HARDWARE. The motor arbiter and the panel are unaffected.
+; Guessing a different pin is not an option -- it would be an output somewhere
+; on a live ESC.
+(defun monitor-reverse () {
+    (gpio-configure 'pin-ppm 'pin-mode-in-pu)
+    (setq rv-hw-ok 1)
+    (loopwhile t {
+        ; Active-low: the button shorts the pin to ESC ground.
+        (let ((raw (if (= (gpio-read 'pin-ppm) 0) 1 0))) {
+            (if (= raw rv-btn-raw)
+                (if (< rv-btn-count 4) (setq rv-btn-count (+ rv-btn-count 1)))
+                { (setq rv-btn-raw raw) (setq rv-btn-count 0) })
+            (if (>= rv-btn-count 4) (setq rv-btn rv-btn-raw))
+        })
+        (if (= rv-btn 0) (setq rv-seen-release 1))
+        (reverse-step)
+        (sleep 0.01)
+    })
+})
 ; Cruise output: PI on ERPM error → current. Integrator anti-windup-clamped to
 ; the live limit (l-current-max × profile scale, both read fresh each tick so a
 ; VESC Tool write or profile switch applies immediately; the firmware control
@@ -434,7 +735,11 @@
 ; this script ever dies: motor stops via the motor-command timeout (every
 ; set-* here feeds it), and ~1.5 s later the stock ADC throttle comes back —
 ; the bike stays rideable (without cruise/PAS) instead of bricking.
-; Priority: master-off > brake > throttle > cruise > PAS > coast.
+; Priority: master-off > brake > direction interlock/reverse > throttle >
+; cruise > PAS > coast. Direction outranks the throttle because the whole point
+; of the interlock is that a twisted throttle must NOT produce forward torque
+; while the bike is in or leaving reverse; it sits under the brake because the
+; lever always wins.
 (defun motor-control-loop () {
     (loopwhile t {
         (app-disable-output 1500)
@@ -456,7 +761,12 @@
                     (if (> brake 0.05) (deactivate-cruise-control))
                     (setq out-rel 0.0)        ; throttle cut is fine under brake
                     (brake-out brake) })      ; full range, never profile-scaled
-                ((or (> thr 0.05) (> out-rel 0.001)) {    ; 2. throttle
+                ((or (not (= rv-dir 1)) (> rv-rel 0.001))  ; 2. direction
+                    ; Reverse, or the interlock ramping reverse current back to
+                    ; zero. Selected while rv-rel is still tailing off so the
+                    ; current returns smoothly instead of stepping.
+                    (reverse-out thr))
+                ((or (> thr 0.05) (> out-rel 0.001)) {    ; 3. throttle
                     (if (> thr 0.05) (deactivate-cruise-control))
                     (throttle-out thr) })
                 ((= cruise-active 1)          ; 3. cruise (PI → current)
@@ -473,10 +783,13 @@
     })
 })
 (defun panel-on-shutdown () {
-    (if (= beep-vol-dirty 1) {
+    (if (or (= beep-vol-dirty 1) (= rm-persist 1)) {
         (shutdown-hold t)
-        (eeprom-store-i beep-vol-addr beep-vol)
-        (setq beep-vol-dirty 0)
+        (if (= beep-vol-dirty 1) {
+            (eeprom-store-i beep-vol-addr beep-vol)
+            (setq beep-vol-dirty 0)
+        })
+        (if (= rm-persist 1) (rm-store))
         (shutdown-hold nil)
     })
 })
@@ -490,6 +803,10 @@
     (loopwhile t {
         (if (= beep-vol-dirty 1) {
             (eeprom-store-i beep-vol-addr beep-vol) (setq beep-vol-dirty 0) })
+        ; Ride config rides the same slow thread, and for the same reason: the
+        ; flash write must not happen on the packet handler or anywhere near
+        ; the 100 Hz motor loop.
+        (if (= rm-persist 1) (rm-store))
         (sleep 2)
     })
 })
@@ -540,4 +857,9 @@
 (event-enable 'event-shutdown)
 (spawn 150 persist-volumes-loop)
 (spawn 150 motor-control-loop)
+; spawn-trap, not spawn: this is the only thread that touches pin-ppm, and on a
+; target without it the gpio-configure throws. Trapped, that kills this thread
+; alone and leaves rv-hw-ok at 0 -- reverse then reports UNSUPPORTED_HARDWARE
+; and the bike rides exactly as it did before.
+(spawn-trap 150 monitor-reverse)
 @const-end
