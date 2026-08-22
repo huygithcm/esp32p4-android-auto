@@ -28,6 +28,58 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-22 19:15 +07:00 - Claude - Review of the ride-mode BE; five defects, two of them safety
+- Scope: user asked for a source review with explicit pass/fail rather than
+  another "builds clean". Five defects in code committed an hour earlier at
+  `3bf38cf`, found by reading rather than by any test or compiler.
+- (1) SAFETY - the reverse boot interlock was defeated by its own initial
+  value. `rv-btn` is defined as 0, and the loop tested it BEFORE the debounce
+  had produced a reading, so `rv-seen-release` was set on the very first tick
+  even with the button shorted to ground. Bench case 2 ("boot with R held:
+  reverse must not arm") would have failed on the hardware. Now only a settled
+  release counts.
+- (2) SAFETY-ADJACENT - the 5 Hz status poll was a write dressed as a read. It
+  re-SELECTed the profile the P4 had cached, so the instant the rider cycled
+  the mode with the ESC's TX button the next poll asserted the stale value and
+  dragged it back. The physical button would have looked broken, five times a
+  second. Added `0x0A REQ_RIDE_STATUS`, read-only. This is a DEVIATION from the
+  contract's message list, which left the polling mechanism unspecified --
+  Codex should confirm the id.
+- (3) `0x07` and `0x08` read the sequence number at offset 4 before anything
+  established the length; `panel-handle` only guarantees four bytes. A
+  truncated request read past the buffer to find the seq it would answer with.
+- (4) `min-speed` was written on every SET regardless of whether reverse was
+  enabled, and never at boot, so a config restored from EEPROM left the motor's
+  negative speed limit at whatever it happened to hold. Now applied at boot and
+  only when reverse is on.
+- (5) The `@const-start` marker count check I ran first reported FAIL because
+  it counted mentions inside comments. The linter tokenizes and skips those, so
+  this was my check being wrong, not the file. Re-run with comments stripped:
+  one marker of each. Recording it because a false FAIL is worth exactly as
+  much attention as a false PASS.
+- Files: `lisp/main.lisp`, `components/vesc_can/vesc_ride_mode.c`,
+  `include/vesc_can/vesc_ride_mode_wire.h`.
+- Checkpoints, all re-run after the fixes:
+  | CP | What | Result |
+  |----|------|--------|
+  | 1 | ride-mode host test, 12 groups | PASS 0 failures |
+  | 2 | BMS parser host test, 12 groups | PASS 0 failures |
+  | 3 | vesc_config serdes host test | PASS (ALL PASS) |
+  | 4a | Lisp paren/brace balance | PASS |
+  | 4b | no mutable def below @const-start | PASS |
+  | 4c | exactly one const block (comments stripped) | PASS |
+  | 4d | every rm-/rv-/reverse- call is defined | PASS |
+  | 4e | message ids unique (0x01-0x09, 0x0A) | PASS |
+  | 4f | buffer length checked before every offset read | PASS |
+  | 5 | jc4880 firmware build | PASS, no new warnings, 0x439690 (16% free) |
+  | 6 | mutation check: weakened parser | PASS (24 failures produced) |
+  | 7 | official `lisp_lint_test.dart` | NOT RUN - flutter not on PATH |
+  | 8 | anything on real hardware | NOT RUN |
+- Status: complete for what can be verified off-vehicle.
+- Handoff: CP7 and CP8 are the two that matter and neither has been done. The
+  bench sequence in contract section 12 is the acceptance test, and case 2 is
+  now the one I would run first, because it is the one that was broken.
+
 ### 2026-08-22 18:40 +07:00 - Claude - Ride-mode/reverse BE: sections 3-7 done, 8-10 fail-closed
 - Scope: implemented the backend Codex specified in
   `docs/RIDE_MODE_REVERSE_BE_CONTRACT.md`. Transport and data model complete;

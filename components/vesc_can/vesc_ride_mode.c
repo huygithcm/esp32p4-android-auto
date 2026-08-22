@@ -268,23 +268,21 @@ static void send_set(uint16_t seq, const vesc_ride_config_t *cfg)
     comm_can_send_buffer_sync(s_target_vesc_id, buf, (unsigned int)ind, 0, 60);
 }
 
-/* Status has no request of its own: it is what SELECT answers with, and asking
- * for the whole config at 5 Hz would be a far larger packet. Re-selecting the
- * profile already in force is a no-op in Lisp and returns fresh status, which
- * is exactly what the dashboard wants. */
+/* A read-only poll. The first version of this re-SELECTed the profile it had
+ * cached, which is a write dressed as a read: the moment the rider cycled the
+ * mode with the ESC's TX button, the next poll asserted the stale profile and
+ * put it straight back. The button would have looked broken and the cause
+ * would have been five polls a second from the dashboard. */
 static void send_status_req(void)
 {
-    uint8_t profile = 0;
-    bool    known   = false;
-    if (s_lock && xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
-        if (s_have_status) { profile = s_status.current_profile; known = true; }
-        xSemaphoreGive(s_lock);
-    }
-    /* Before the first status has ever arrived there is no profile to
-     * re-assert, and guessing 0 would drop the rider out of the mode they
-     * chose. Ask for config instead; its reply seeds everything. */
-    if (!known) { send_get(next_seq()); return; }
-    send_select(next_seq(), profile);
+    uint8_t buf[8];
+    int32_t ind = 0;
+    buf[ind++] = COMM_CUSTOM_APP_DATA;
+    buf[ind++] = VLP_MAGIC0;
+    buf[ind++] = VLP_MAGIC1;
+    buf[ind++] = VRM_MSG_REQ_STATUS;
+    buf[ind++] = comm_can_get_local_id();
+    comm_can_send_buffer_sync(s_target_vesc_id, buf, (unsigned int)ind, 0, 60);
 }
 
 void vesc_ride_mode_poll_loop(void)

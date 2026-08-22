@@ -146,6 +146,13 @@
 ; All-or-nothing: a single bad field means the whole stored block is ignored
 ; and the defaults stand. Mixing a trusted default with an untrusted stored
 ; value is how a config nobody ever chose ends up driving the motor.
+; min-speed is the motor's negative speed limit. Only written when reverse is
+; actually enabled: with it off the value is unreachable, and mutating motor
+; config nobody asked about is how a setting drifts away from what VESC Tool
+; shows. Magnitude in m/s; the firmware stores the negative erpm itself.
+(defun rm-apply-reverse-speed ()
+    (if (= rm-rev-en 1)
+        (conf-set 'min-speed (/ (/ rm-rev-speed 10.0) 3.6))))
 (defun rm-load () {
     (if (= (eeprom-read-i rm-ee-magic) rm-ee-tag) {
         (let ((s0 (eeprom-read-i (+ rm-ee-base 0)))
@@ -337,6 +344,7 @@
 ; whatever was in force before: waking up in the fastest mode is not a
 ; behaviour anyone asked for.
 (rm-load)
+(rm-apply-reverse-speed)
 (apply-profile 0)
 (spawn 150 update-rpm-per-ms)
 (spawn 150 monitor-rx-button)
@@ -496,7 +504,7 @@
                         ; Apply before persisting: the rider feels the change
                         ; on the next twist whether or not flash cooperates.
                         (apply-profile current-profile)
-                        (conf-set 'min-speed (/ (/ rm-rev-speed 10.0) 3.6))
+                        (rm-apply-reverse-speed)
                         (setq rm-persist 1)
                         0
                     })))))))
@@ -545,8 +553,22 @@
                     (panel-set-throttle (if (= throttle-on 1) 0 1))
                     (panel-send-state reply-id)
                 })
-                ((= msg 0x07) (rm-send-config reply-id (bufget-u16 data 4) 0))
-                ((= msg 0x08) (rm-apply-set data reply-id (bufget-u16 data 4)))
+                ; The sequence number lives at 4..5, so the length has to be
+                ; established BEFORE it is read -- panel-handle only guarantees
+                ; four bytes. A truncated request otherwise reads past the
+                ; buffer to find the seq it would answer with.
+                ((= msg 0x07)
+                    (if (>= (buflen data) 6)
+                        (rm-send-config reply-id (bufget-u16 data 4) 0)))
+                ((= msg 0x08)
+                    (if (>= (buflen data) 6)
+                        (rm-apply-set data reply-id (bufget-u16 data 4))))
+                ; Status poll. Deliberately NOT a re-SELECT of the current
+                ; profile: the P4's cached profile goes stale the moment the
+                ; rider presses the TX button, and re-asserting it would drag
+                ; the mode straight back and make the physical button look
+                ; broken.
+                ((= msg 0x0A) (rm-send-status reply-id))
                 ((= msg 0x09) {
                     ; Changing the forward profile while rolling is allowed --
                     ; it only re-scales limits -- but changing DIRECTION is not,
@@ -705,9 +727,15 @@
             (if (= raw rv-btn-raw)
                 (if (< rv-btn-count 4) (setq rv-btn-count (+ rv-btn-count 1)))
                 { (setq rv-btn-raw raw) (setq rv-btn-count 0) })
-            (if (>= rv-btn-count 4) (setq rv-btn rv-btn-raw))
+            (if (>= rv-btn-count 4) {
+                (setq rv-btn rv-btn-raw)
+                ; Only a SETTLED release counts. rv-btn starts at 0, so testing
+                ; it before the debounce has produced a reading would mark the
+                ; button released on the very first tick and hand reverse to a
+                ; rider whose button is shorted to ground.
+                (if (= rv-btn-raw 0) (setq rv-seen-release 1))
+            })
         })
-        (if (= rv-btn 0) (setq rv-seen-release 1))
         (reverse-step)
         (sleep 0.01)
     })

@@ -55,6 +55,11 @@ extern "C" {
 #define VRM_MSG_REQ_CONFIG    0x07u
 #define VRM_MSG_SET_CONFIG    0x08u
 #define VRM_MSG_SELECT_MODE   0x09u
+/* Status poll. Not in the original contract, which left the mechanism open:
+ * re-SELECTing the current profile was the obvious way and is wrong, because
+ * the P4's cached profile is stale the instant the rider presses the TX button
+ * and re-asserting it drags the mode back. This asks and changes nothing. */
+#define VRM_MSG_REQ_STATUS    0x0Au
 /* Lisp -> P4 */
 #define VRM_MSG_CONFIG        0x87u
 #define VRM_MSG_STATUS        0x89u
