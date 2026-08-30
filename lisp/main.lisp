@@ -696,9 +696,17 @@
                 (t {
                     ; Stopped and held. Arm on a deliberate brake hold, then run
                     ; once the brake is released and the throttle is twisted.
-                    (if (> brk 0.05)
+                    ;
+                    ; The brake hold only counts while the throttle is at rest.
+                    ; Counting it regardless meant a rider holding both could
+                    ; arm, and then the moment the brake came off the very next
+                    ; tick saw an open throttle and went straight to full
+                    ; reverse current. Arming has to be a deliberate act with
+                    ; nothing else asking for torque.
+                    (if (and (> brk 0.05) (< thr 0.05))
                         (setq rv-brake-ticks (+ rv-brake-ticks 1))
                         (setq rv-brake-ticks 0))
+                    (if (> thr 0.05) (setq rv-armed 0))
                     (if (>= rv-brake-ticks 20) (setq rv-armed 1))
                     (if (and (= rv-armed 1) (< brk 0.05))
                         (setq rv-dir -1)
@@ -795,6 +803,15 @@
                 ((or (> brake 0.05) (> brk-rel 0.001)) {  ; 1. brake
                     (if (> brake 0.05) (deactivate-cruise-control))
                     (setq out-rel 0.0)        ; throttle cut is fine under brake
+                    ; Reverse current has to RAMP to zero under the brake, not
+                    ; sit frozen. This branch outranks the direction branch, so
+                    ; reverse-out never runs while braking -- rv-rel kept its
+                    ; last value and the bike resumed at exactly that current
+                    ; the moment the lever came off. Decay it here instead.
+                    ; rv-armed is deliberately left set: releasing the brake
+                    ; resumes reverse, which is what reversing into a parking
+                    ; space actually needs.
+                    (setq rv-rel (slew rv-rel 0.0 (ramp-pos) (ramp-neg)))
                     (brake-out brake) })      ; full range, never profile-scaled
                 ((or (not (= rv-dir 1)) (> rv-rel 0.001))  ; 2. direction
                     ; Reverse, or the interlock ramping reverse current back to

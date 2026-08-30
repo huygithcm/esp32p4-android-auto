@@ -28,6 +28,120 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-30 11:10 +07:00 - Claude - Read the absolute-current plan; user approved its three gates
+- Scope: read `docs/RIDE_MODE_ABSOLUTE_CURRENT_PLAN.md` (Codex, 2026-08-30),
+  verified its findings against my code, and put its three approval questions
+  to the user. Section 9 gates implementation on those, and they are now
+  answered.
+- User's decisions, verbatim in intent:
+  1. No fixed default set. The rider may enter any amperage; when the entered
+     value exceeds the ESC's `l-current-max`, the EFFECTIVE limit becomes the
+     ESC value. That is Codex's `min(requested, l-current-max)` unchanged, so
+     a value stored above the ESC's capability stays stored and starts working
+     if the ESC is later configured higher.
+  2. No ceiling on entry -- "4 digits only". FLAGGED to the user and recorded
+     here: the wire field is uint16 in dA, so four digits of AMPERES (9999 A =
+     99990 dA) overflows it. Reading this as four displayed digits in the form
+     999.9, i.e. 1..9999 dA = 0.1..999.9 A, with no other ceiling. If four
+     digits of whole amperes is meant, the field has to widen to u32 and the
+     format version bumps again.
+  3. Brake while reversing: ramp to zero but KEEP the arm. This overrides the
+     plan's proposal 3, which wanted the brake-hold repeated. The user's reason
+     is reversing into a parking space, where re-arming on every brake touch is
+     the wrong ergonomics.
+- Verified Codex's two logic holes against `lisp/main.lisp` rather than taking
+  them: both real. (a) `rv-brake-ticks` counted the brake alone, so a rider
+  holding throttle and brake armed, and the tick after the brake came off saw
+  an open throttle and went to full reverse current. (b) braking while
+  reversing left `rv-armed` set.
+- Found a third that the plan does not mention, and it is worse than (b): the
+  arbiter's brake branch outranks the direction branch, so `reverse-out` never
+  runs while braking and `rv-rel` was FROZEN rather than decayed. The bike
+  resumed at exactly the previous current the instant the lever came off. The
+  user's "ramp to zero, keep the arm" is only half implemented until this is
+  fixed, because nothing was ramping.
+- Files: `lisp/main.lisp` -- arming now requires the throttle at rest and an
+  open throttle clears the arm; the brake branch decays `rv-rel` toward zero
+  while deliberately leaving `rv-armed` set, per decision 3.
+- Checks: paren/brace balance PASS. These fixes carry into v2 unchanged, so
+  they are not throwaway work against the coming rewrite.
+- Status: gates approved, v1 safety fixes applied; v2 itself NOT started.
+- Handoff: v2 is a large change and replaces most of what `3bf38cf` added --
+  absolute amperes instead of speed+permille, cruise removed entirely, reverse
+  moved from `pin-ppm` to `pin-rx`, format version 2, new EEPROM magic. Worth
+  noting for Codex: moving reverse to `pin-rx` removes ALL THREE of the
+  unverified risks in `docs/LISP_VERIFICATION_PLAN.md` section 2 -- `pin-rx` is
+  already the cruise button, already `pin-mode-in-pu`, and already proven on
+  the vehicle, so no `pin-ppm`, no dependence on `spawn-trap` to contain it,
+  and no waiting on a connector pinout. `conf-set 'min-speed` remains the one
+  unverified call, and v2 still uses it for the reverse speed limit.
+
+### 2026-08-30 10:44 +07:00 - Codex - Put signed V/A inside BMS SOC gauge
+- Scope: update the BMS frontend to match the supplied gauge reference and the
+  requested rider-facing sign convention: current entering the pack is
+  positive, current leaving the pack is negative.
+- Files: changed `Super_VESC_Display/custom/bms_view.c` and
+  `Super_VESC_Display/lvgl-simulator/main.c`; documented the display convention
+  in `docs/ui-references/bms/README.md`. No BLE/parser/model backend file was
+  changed, and concurrent edits in `custom.c`, `custom.h`,
+  `realtime_viewer.c` and `docs/BMS_FE_BE_CONTRACT.md` were preserved.
+- Findings: the canonical BE/UI snapshot currently uses VESC-style signs
+  (`+` discharge, `-` charge). FE now performs one explicit inversion: charge
+  and regen display `+A/+W`, discharge displays `-A/-W`, and near-zero current
+  displays unsigned `0.00A`. Voltage remains a positive magnitude. The V/A
+  values are centered in bordered pills inside the enlarged SOC arc; flow text
+  and colors follow the displayed direction. `--bms-preview` now opens the BMS
+  tab directly.
+- Checks: touched simulator objects compiled; full simulator `default` target
+  linked `simulator.exe` and `simulator.dll`; JK BMS host tests passed all 12
+  groups; `git diff --check` passed. The first aggregate make invocation failed
+  before compilation because its Windows `python3`/MSYS shell environment was
+  invalid, then the supported Windows targets succeeded with `SHELL=cmd.exe`.
+- Status: FE implementation complete; no GUI window or physical BMS run yet
+- Handoff: on hardware, verify charger/regen shows `+`, vehicle load shows `-`,
+  and idle shows no sign. Do not invert again in BE unless the canonical
+  model/ABI is deliberately versioned and all consumers are migrated.
+
+### 2026-08-30 10:24 +07:00 - Codex - Amend ride-mode plan: remove cruise, RX hold-to-reverse
+- Scope: incorporate the requested two-button layout before source changes:
+  keep TX as Mode, remove cruise control, and reuse the former RX cruise button
+  as an active-low hold-to-reverse input.
+- Files: updated `docs/RIDE_MODE_ABSOLUTE_CURRENT_PLAN.md`; marked the older
+  `docs/RIDE_MODE_REVERSE_BE_CONTRACT.md` superseded; inspected cruise/button
+  dependencies across `lisp/main.lisp`, VESC panel transport, UI updater,
+  Android Auto overlay, dashboard custom/theme/generated sources and tests.
+- Findings: cruise currently owns RX and conditionally changes TX behavior;
+  reverse currently uses a third `pin-ppm`. The proposed implementation path
+  removes the cruise PI/arbiter branch and DASH 0x04/0x84, moves active mode to
+  ride status 0x89, gives reverse exclusive ownership of RX, and centrally
+  blocks all mode selectors during reverse/interlock. Added fresh-press,
+  throttle-release, brake-rearm, debounce and fail-closed requirements.
+- Checks: read-only `rg` audit and manual source review; documentation-only
+  changes, so no build or runtime tests were run. Final diff/status reviewed.
+- Status: proposal updated; source implementation has not started
+- Handoff: Claude/BE should use only the absolute-current plan, not the
+  superseded speed/percent contract. Await user approval of defaults/range and
+  brake re-arm behavior before coordinated FE/BE implementation.
+
+### 2026-08-30 - Codex - Plan absolute-current ride modes and re-audit reverse
+- Scope: review the committed ride-mode/Lisp backend and the uncommitted FE,
+  then propose replacing per-mode speed/percentage with independent absolute
+  motor-current caps and re-audit the reverse state machine before changes.
+- Files: added `docs/RIDE_MODE_ABSOLUTE_CURRENT_PLAN.md`; inspected
+  `lisp/main.lisp`, ride-mode transport/parser/tests and FE screen/stub. No
+  source implementation changed.
+- Findings: boot already explicitly applies Mode 1 and active mode is not
+  persisted. Current v1 still stores ordered speed plus current permille and
+  calls `conf-set max-speed`. Proposed v2 stores requested deci-amps, reports
+  live ESC max/effective cap, permits any mode ordering and never raises ESC
+  Motor Current Max. Reverse currently lacks a throttle-release gate while
+  arming and does not clear armed state when braking in reverse.
+- Checks: official VESC source confirms `pin-ppm` and `min-speed`; official
+  LispBM reference confirms `spawn-trap`. Read-only review only; no build/run.
+- Status: proposal pending user approval
+- Handoff: user must approve defaults, input ceiling, and reverse brake re-arm
+  behavior before FE/BE implementation starts.
+
 ### 2026-08-22 19:50 +07:00 - Claude - Checked the Lisp API against the in-repo reference; one more load-time bug
 - Scope: user asked for the source behind the current Lisp and an improvement
   plan. No LispBM/VESC source is vendored -- `research/_sources/` holds only
