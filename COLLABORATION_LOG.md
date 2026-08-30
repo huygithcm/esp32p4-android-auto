@@ -45,6 +45,11 @@ present from work performed in the current session.
      999.9, i.e. 1..9999 dA = 0.1..999.9 A, with no other ceiling. If four
      digits of whole amperes is meant, the field has to widen to u32 and the
      format version bumps again.
+     SETTLED 2026-08-30 11:25: three digits, whole amperes. Entry range is
+     **1..999 A**, i.e. 10..9990 dA, which fits uint16 with room to spare and
+     needs no format change. The dA encoding is kept even though the UI shows
+     whole amperes -- it costs nothing now and avoids a format bump if a
+     tenth-amp step is ever wanted.
   3. Brake while reversing: ramp to zero but KEEP the arm. This overrides the
      plan's proposal 3, which wanted the brake-hold repeated. The user's reason
      is reversing into a parking space, where re-arming on every brake touch is
