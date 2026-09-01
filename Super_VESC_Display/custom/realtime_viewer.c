@@ -14,6 +14,7 @@
 #include "lvgl.h"
 #include "custom.h"
 #include "bms_view.h"
+#include "dashboard_theme.h"
 
 extern lv_ui guider_ui;
 
@@ -46,10 +47,19 @@ static lv_obj_t  *s_tabview;
 static lv_obj_t  *s_val[RT_COUNT];
 static lv_timer_t *s_timer;
 static bool       s_alive;
+static bool       s_back_to_dashboard;
 
 static void back_cb(lv_event_t *e)
 {
     (void)e;
+    if (s_back_to_dashboard) {
+        lv_obj_t *dashboard = dashboard_theme_active_screen();
+        if (dashboard) {
+            lv_scr_load_anim(dashboard, LV_SCR_LOAD_ANIM_MOVE_RIGHT,
+                             200, 0, false);
+        }
+        return;
+    }
     /* Return to the VESC Tool config menu (rebuilt from preserved state). */
     run_vesc_tool_menu();
 }
@@ -169,9 +179,12 @@ static void update_cb(lv_timer_t *t)
     set_val(RT_PPMMS,  iofresh, "%.2f ms", io->ppm_ms);
 }
 
-void show_realtime_viewer(void)
+static void show_realtime_viewer_tab(uint16_t initial_tab,
+                                     bool back_to_dashboard)
 {
     if (s_screen) return;  /* re-entrancy guard */
+
+    s_back_to_dashboard = back_to_dashboard;
 
     s_screen = lv_obj_create(NULL);
     lv_obj_set_size(s_screen, 800, 480);
@@ -249,16 +262,29 @@ void show_realtime_viewer(void)
 
     bms_view_create(bms_tab);
 
+    bool bms_initial = initial_tab == 1;
+    lv_tabview_set_act(s_tabview, bms_initial ? 1 : 0, LV_ANIM_OFF);
+
     lv_obj_add_event_cb(s_screen, screen_unloaded_cb, LV_EVENT_SCREEN_UNLOADED, NULL);
     s_alive = true;
 
-    /* Turn on the ADC/PPM poller and start refreshing labels. */
-    vesc_io_data_set_active(true);
-    bms_view_set_active(false);
+    /* Only the visible tab owns its optional poller. */
+    vesc_io_data_set_active(!bms_initial);
+    bms_view_set_active(bms_initial);
     s_timer = lv_timer_create(update_cb, 200, NULL);
     update_cb(s_timer);
 
     lv_scr_load_anim(s_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+}
+
+void show_realtime_viewer(void)
+{
+    show_realtime_viewer_tab(0, false);
+}
+
+void show_bms_viewer(void)
+{
+    show_realtime_viewer_tab(1, true);
 }
 
 #else  /* !LV_REALDEVICE — desktop simulator placeholder */
@@ -287,7 +313,7 @@ static void sim_tab_changed_cb(lv_event_t *e)
     bms_view_set_active(lv_tabview_get_tab_act(tabs) == 1);
 }
 
-void show_realtime_viewer(void)
+static void show_realtime_viewer_tab(uint16_t initial_tab)
 {
     if (s_sim_screen) return;
     s_sim_screen = lv_obj_create(NULL);
@@ -338,11 +364,22 @@ void show_realtime_viewer(void)
     lv_label_set_text(lbl, "VESC realtime data is available on the device build.");
     lv_obj_center(lbl);
     bms_view_create(bms_tab);
-    lv_tabview_set_act(s_sim_tabs, 1, LV_ANIM_OFF);
-    bms_view_set_active(true);
+    bool bms_initial = initial_tab == 1;
+    lv_tabview_set_act(s_sim_tabs, bms_initial ? 1 : 0, LV_ANIM_OFF);
+    bms_view_set_active(bms_initial);
 
     lv_obj_add_event_cb(s_sim_screen, sim_unloaded_cb, LV_EVENT_SCREEN_UNLOADED, NULL);
     lv_scr_load_anim(s_sim_screen, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+}
+
+void show_realtime_viewer(void)
+{
+    show_realtime_viewer_tab(0);
+}
+
+void show_bms_viewer(void)
+{
+    show_realtime_viewer_tab(1);
 }
 
 #endif /* LV_REALDEVICE */

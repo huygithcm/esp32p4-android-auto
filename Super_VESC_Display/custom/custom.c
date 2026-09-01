@@ -463,6 +463,12 @@ static void fmt_overlay_timer_cb(lv_timer_t *t)
  * set the static unit captions + bump the units epoch at (re)build time. */
 static void cockpit_units_changed(void);
 
+static void cockpit_bms_shortcut_cb(lv_event_t *e)
+{
+    (void)e;
+    show_bms_viewer();
+}
+
 /* Per-screen chrome — applied every time the cockpit screen is (re)built (boot,
  * and again when the user switches back to the cockpit theme). The one-time
  * bits (settings_wrapper_init, the format-notice timer, theme registration)
@@ -471,6 +477,21 @@ static void cockpit_screen_init(lv_ui *ui)
 {
     /* Disable screen panning — dashboard is a static layout. */
     lv_obj_clear_flag(ui->dashboard_Classic, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* Keep this shortcut in custom/ so GUI Guider regeneration cannot remove
+     * it. The former mode slot is free because mode now sits below speed. */
+    lv_obj_t *bms = lv_label_create(ui->dashboard_Classic);
+    lv_label_set_text(bms, "BMS");
+    lv_obj_set_pos(bms, 110, 5);
+    lv_obj_set_size(bms, 75, 30);
+    lv_obj_add_flag(bms, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_text_color(bms, COCKPIT_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(bms, &lv_font_montserratMedium_24,
+                               LV_PART_MAIN);
+    lv_obj_set_style_text_letter_space(bms, 2, LV_PART_MAIN);
+    lv_obj_set_style_text_align(bms, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(bms, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_add_event_cb(bms, cockpit_bms_shortcut_cb, LV_EVENT_CLICKED, NULL);
 
     /* GUI Guider creates the ride-mode indicator in the top status bar.
      * Override that generated layout here so regeneration cannot undo the
@@ -2329,6 +2350,11 @@ static void pas_open_btn_event_cb(lv_event_t *e) {
     show_pas_settings();   /* opens the on-device PAS screen (custom/pas_screen.c) */
 }
 
+static void ride_modes_open_btn_event_cb(lv_event_t *e) {
+    (void)e;
+    show_ride_mode_settings();
+}
+
 #ifdef LV_REALDEVICE
 /* CAN bus health readout next to the firmware-version block. The label is
  * (re)created by every settings_ui_init; the 1 Hz timer is global and gated
@@ -3034,6 +3060,24 @@ void settings_ui_init(lv_ui *ui) {
     lv_obj_set_style_text_color(settings_temp_unit_hint, lv_color_hex(0x999999), 0);
     lv_obj_set_style_text_font(settings_temp_unit_hint, &lv_font_montserrat_14, 0);
 
+    y_pos += SETTINGS_ROW_H;
+
+    // ========== Ride Modes ==========
+    // Opens the staged editor for Mode 1/2/3 speed/current and reverse limits.
+    // Safety validation and persistence are owned by the VESC/Lisp backend.
+    settings_heading_create(ui->settings, y_pos, "Ride modes");
+    {
+        lv_obj_t *ride_btn = lv_btn_create(ui->settings);
+        lv_obj_set_pos(ride_btn, 600, y_pos + 8);
+        lv_obj_set_size(ride_btn, 190, 44);
+        lv_obj_set_style_bg_color(ride_btn, lv_color_hex(0x00a9ff), 0);
+        lv_obj_set_style_radius(ride_btn, 8, 0);
+        lv_obj_t *ride_lbl = lv_label_create(ride_btn);
+        lv_label_set_text(ride_lbl, "Open");
+        lv_obj_center(ride_lbl);
+        lv_obj_add_event_cb(ride_btn, ride_modes_open_btn_event_cb,
+                            LV_EVENT_CLICKED, NULL);
+    }
     y_pos += SETTINGS_ROW_H;
 
     // ========== Pedal Assist (PAS) ==========

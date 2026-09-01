@@ -13,8 +13,36 @@ the result into its display-only structure in
 
 Pairing uses the backend control surface in `main/ble_bms_client.h`: the FE
 starts/stops discovery, renders scan results and submits the selected address
-to `ble_bms_bind()`. The FE does not perform GAP/GATT operations or parse
-vendor frames.
+to `ble_bms_bind()` only after the user presses `CONNECT`. Selecting a scan
+row is frontend-only state and must not connect or persist anything. The FE
+does not perform GAP/GATT operations or parse vendor frames.
+
+## Explicit SCAN -> select -> CONNECT flow
+
+The backend must provide this non-blocking control contract:
+
+1. `scan_start`: accept or reject a scan request and report `SCANNING`,
+   `WAIT_SLOT`, or a concrete error. Results contain stable address/type,
+   display name, RSSI and driver-match confidence. Duplicate addresses are
+   coalesced and scan completion is reported explicitly.
+2. `scan_stop`: cancel only the BMS scan. It must not cancel a cadence scan or
+   another client's pending connection.
+3. `connect(address)`: begin connecting to the address chosen by the FE. If no
+   controller connection slot is free, queue the request and report
+   `WAIT_SLOT`; never evict an existing phone, VESC Tool or cadence link.
+4. Connection progress must expose `CONNECTING -> DISCOVERING -> PROBING ->
+   LIVE`, plus `BACKOFF`, `UNSUPPORTED` and `ERROR` with a stable reason code.
+5. Persist the peer only after the GATT profile and protocol probe succeed.
+   A failed CONNECT must remain selected for retry but must not become the
+   reboot auto-connect target.
+6. `disconnect/forget` tears down or erases the saved peer explicitly. Closing
+   the scan modal only stops scanning; leaving the BMS tab only pauses telemetry
+   polling and keeps a valid connection alive.
+
+The current `ble_bms_bind()` combines connect and persistence, so it is enough
+for the first FE wiring but is not the final BE contract. BE should split the
+accepted connect request from the successful/persisted binding and own the
+global GAP scan/connect-slot arbitration shared with cadence.
 
 Rules:
 
@@ -25,17 +53,17 @@ Rules:
 - `age_ms = UINT32_MAX` means no sample has arrived.
 - Current and power are positive while discharging, negative while charging.
 - Cell and temperature counts are bounded before copying.
-- FE tab visibility never owns connection/reconnect policy. The current JK
-  backend streams after probing, so the visibility hook is a no-op; it can
-  become a request-rate hint for a future polled driver.
+- FE tab visibility never owns connection/reconnect policy. It only controls
+  the current JK cell-info poll rate; the backend keeps the connection and
+  device-info probe alive while the tab is hidden.
 - FE is read-only. No backend setting/control command is exposed through this
   ABI.
 
 Before the first backend sample, the real-device view displays
 `BMS not configured`; the simulator supplies a 10S/40 V fixture. The current
-backend binding is RAM-only, so persistence/rebind after reboot remains a BE
-handoff. Balance-wire resistance is shown only when a future backend model
-marks that field valid; the current JK model does not publish it.
+backend persists the selected peer in its own NVS namespace and restores it at
+boot. Balance-wire resistance is shown only when the backend marks that field
+and its element mask valid.
 
 ## Parallel BE additions from the reference screens
 

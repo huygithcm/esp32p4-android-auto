@@ -42,6 +42,11 @@ void show_trips_statistics(void);
  * custom/realtime_viewer.c. */
 void show_realtime_viewer(void);
 
+/* Dashboard shortcut into the BMS tab of the realtime viewer. Unlike the
+ * regular entry point above, this opens BMS immediately and returns directly
+ * to the active dashboard when Back is pressed. */
+void show_bms_viewer(void);
+
 /* LISP script editor. Opened from the VESC Tool config menu header. Edits
  * scripts with an on-screen keyboard, saves/loads them to the local littlefs
  * (/vescfs/lisp), and reads/uploads/runs code on the VESC. Defined in
@@ -69,6 +74,11 @@ void lisp_panel_open_async(void);
  * (main/pas.h) and BLE cadence client (main/ble_cadence_client.h) directly — no
  * phone involvement. Defined in custom/pas_screen.c. */
 void show_pas_settings(void);
+
+/* Ride-mode editor. Opened from Settings; stages all three forward profiles
+ * and reverse limits locally, then sends one atomic Save to the VESC/Lisp
+ * backend. Defined in custom/ride_mode_screen.c. */
+void show_ride_mode_settings(void);
 
 void update_current(float current);
 void update_speed(float speed);

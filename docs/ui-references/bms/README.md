@@ -71,3 +71,22 @@ chữ sẽ quá nhỏ khi xe đang di chuyển.
 - `docs/BMS_TAB_TECHNICAL_ANALYSIS.md`
 - `docs/BMS_BLE_ARCHITECTURE_RESEARCH.md`
 
+## User-facing current sign
+
+The BMS gauge presents power flow from the pack rider's point of view:
+
+- charge or regenerative current entering the pack is positive (`+A`, `+W`);
+- discharge current leaving the pack for the load is negative (`-A`, `-W`);
+- zero is shown without a sign (`0.00A`).
+
+The canonical backend/display snapshot currently follows the older VESC-style
+sign (`+` discharge, `-` charge). `custom/bms_view.c` performs the inversion at
+one explicit FE boundary; parser/model code must not add a second inversion.
+
+## Large cell and wire section
+
+`CELLS` and `WIRE` live in a standalone full-width section below the pack
+overview. Each data card is `238 x 52` pixels (twice the former `119 x 26`)
+with a 24 px value font. The section uses three columns and expands only to the
+row count required by the connected pack; the outer BMS page provides vertical
+scrolling through all 32 supported cells.

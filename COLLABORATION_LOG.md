@@ -28,6 +28,45 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-09-01 - Claude - Port plan: non-Android-Auto build for ESP32 / ESP32-S3
+- Scope: khảo sát toàn bộ luồng code hiện tại để xác định phần trích xuất được
+  sang ESP32-S3 (và ESP32 classic) khi bỏ Android Auto. Không sửa code firmware.
+- Files: thêm `docs/ESP32_S3_PORT_PLAN.md`. Chỉ đọc: `main/*`, `components/*`,
+  `Super_VESC_Display/{generated,custom}`, `sdkconfig.defaults*`,
+  `partitions_16mb.csv`, `build_jc4880/esp32p4_android_auto.map`.
+- Checks: không build (đây là khảo sát). Số liệu flash lấy bằng cách tổng hợp
+  section size theo object từ `build_jc4880/esp32p4_android_auto.map` (image
+  4.429.456 B): blob C6 + BT agent + serial-flasher 1349 KB, esp-hosted +
+  esp_wifi_remote 435 KB, AA-only 275 KB, VESC app+UI 696 KB, LVGL 528 KB.
+  Đếm cơ học: ~1.000 lời gọi toạ độ tuyệt đối trong UI (668 riêng ở 4 file
+  `setup_scr_dashboard_*.c`); 12 hàm BSP thực sự được app gọi.
+- Status: observation
+- Handoff: hai phát hiện dễ sai nếu người sau đọc lướt — (1)
+  `main/fonts/aabridge_font_*.c` mang tên AA nhưng là của `notif_toast.c` và
+  `music_info_view.c`, không được bỏ theo AA; (2) `main/vbat_routing.c` là
+  P4-only (PMU LP + CR2032), không port được sang S3/ESP32. Chưa chốt được IC
+  driver / giao tiếp của ba màn 2.8"/4.3"/7" mà user đang có — xem §8 của tài
+  liệu, đây là chặn cho bước BSP.
+
+### 2026-08-30 11:18 +07:00 - Codex - Separate and enlarge BMS cell/wire section
+- Scope: move CELLS/WIRE out of the dense overview row into a dedicated
+  full-width section and double the cell-value form size for readability.
+- Files: changed `Super_VESC_Display/custom/bms_view.c` and updated
+  `docs/ui-references/bms/README.md`; preserved Claude's concurrent ride-mode,
+  BMS contract and realtime-viewer changes.
+- Findings: cards are now exactly `238x52` with 24 px values versus the former
+  `119x26`/12 px, arranged in three columns. The section height follows the
+  actual 1..32-cell row count and the existing outer BMS container owns all
+  vertical scrolling. CELLS/WIRE summaries are mode-specific; long summaries
+  are clipped with dots, invalid masks cannot expose overlapping `--` cards,
+  and switching mode returns to the section header before the section shrinks.
+- Checks: geometry audited for 10/24/32-cell counts; `git diff --check` passed;
+  simulator object compiled and full `simulator.exe`/`simulator.dll` link
+  passed. Final BMS preview is running and responsive as PID 26344.
+- Status: FE implementation complete; awaiting user visual feedback
+- Handoff: exercise CELLS/WIRE and vertical scroll in the open simulator. A
+  physical 24S/32S BMS remains the final proof of real mask/count data.
+
 ### 2026-08-30 11:10 +07:00 - Claude - Read the absolute-current plan; user approved its three gates
 - Scope: read `docs/RIDE_MODE_ABSOLUTE_CURRENT_PLAN.md` (Codex, 2026-08-30),
   verified its findings against my code, and put its three approval questions
