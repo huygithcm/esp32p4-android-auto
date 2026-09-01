@@ -22,8 +22,8 @@
 #define WIFI_BENCH_OVERRIDE 0
 #endif
 
-#define WIFI_USE_STA (WIFI_BENCH_OVERRIDE || CONFIG_AA_WIFI_ROLE_STA)
-#define WIFI_USE_AP  (!WIFI_BENCH_OVERRIDE && CONFIG_AA_WIFI_ROLE_AP)
+#define WIFI_USE_STA (WIFI_BENCH_OVERRIDE || CONFIG_WIFI_ROLE_STA)
+#define WIFI_USE_AP  (!WIFI_BENCH_OVERRIDE && CONFIG_WIFI_ROLE_AP)
 
 static const char *TAG = "wifi";
 
@@ -45,7 +45,7 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 #if WIFI_BENCH_OVERRIDE
     const int max_retry = INT32_MAX;
 #else
-    const int max_retry = CONFIG_AA_WIFI_MAX_RETRY;
+    const int max_retry = CONFIG_WIFI_STA_MAX_RETRY;
 #endif
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
@@ -86,16 +86,16 @@ static esp_err_t start_ap(void)
     uint8_t mac[6];
     ESP_ERROR_CHECK(esp_wifi_get_mac(WIFI_IF_AP, mac));
     snprintf(s_ap_info.ssid, sizeof(s_ap_info.ssid), "%s-%02X%02X",
-             CONFIG_AA_AP_SSID_PREFIX, mac[4], mac[5]);
-    strlcpy(s_ap_info.password, CONFIG_AA_AP_PASSWORD, sizeof(s_ap_info.password));
+             CONFIG_WIFI_AP_SSID_PREFIX, mac[4], mac[5]);
+    strlcpy(s_ap_info.password, CONFIG_WIFI_AP_PASSWORD, sizeof(s_ap_info.password));
     snprintf(s_ap_info.bssid_str, sizeof(s_ap_info.bssid_str),
              "%02X:%02X:%02X:%02X:%02X:%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    s_ap_info.channel = CONFIG_AA_AP_CHANNEL;
+    s_ap_info.channel = CONFIG_WIFI_AP_CHANNEL;
 
     wifi_config_t cfg = {
         .ap = {
-            .channel = CONFIG_AA_AP_CHANNEL,
+            .channel = CONFIG_WIFI_AP_CHANNEL,
             /* AA Wireless only ever pairs with one phone, but bench testing
              * is much friendlier with a few extra slots for laptops. */
             .max_connection = 4,
@@ -106,7 +106,7 @@ static esp_err_t start_ap(void)
     strlcpy((char *)cfg.ap.ssid, s_ap_info.ssid, sizeof(cfg.ap.ssid));
     cfg.ap.ssid_len = strlen(s_ap_info.ssid);
     strlcpy((char *)cfg.ap.password, s_ap_info.password, sizeof(cfg.ap.password));
-    if (strlen(CONFIG_AA_AP_PASSWORD) == 0) {
+    if (strlen(CONFIG_WIFI_AP_PASSWORD) == 0) {
         cfg.ap.authmode = WIFI_AUTH_OPEN;
     }
 
@@ -122,8 +122,8 @@ static esp_err_t start_ap(void)
 #define STA_SSID     BENCH_WIFI_SSID
 #define STA_PASSWORD BENCH_WIFI_PASSWORD
 #else
-#define STA_SSID     CONFIG_AA_WIFI_SSID
-#define STA_PASSWORD CONFIG_AA_WIFI_PASSWORD
+#define STA_SSID     CONFIG_WIFI_STA_SSID
+#define STA_PASSWORD CONFIG_WIFI_STA_PASSWORD
 #endif
 
 static esp_err_t start_sta(void)

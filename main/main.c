@@ -30,7 +30,11 @@ static void heap_probe_post_priority_ctors(void)
 /* port_start_app_hook is a weak symbol declared in
  * components/freertos/app_startup.c, called from esp_startup_start_app()
  * AFTER xTaskCreatePinnedToCore(main_task) but BEFORE vTaskStartScheduler.
- * That's the last point where we can measure heap before IDLE allocs. */
+ * That's the last point where we can measure heap before IDLE allocs.
+ *
+ * Keep an eye on both probes on ESP32-S3: internal SRAM is 512 KB there
+ * against the P4's 768 KB, and Wi-Fi + the BLE controller both want
+ * DMA-capable internal blocks. */
 void port_start_app_hook(void)
 {
     size_t internal8 = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -39,36 +43,23 @@ void port_start_app_hook(void)
                    (unsigned)internal8, (unsigned)largest);
 }
 
-#include "aa_overclock.h"
 #include "ble_host.h"
 #include "ble_nus.h"
 #include "notif_bridge.h"
 #include "notif_toast.h"
 #include "pas.h"
-#include "music_info_view.h"
 #include "gui_guider.h"
 #include "dashboard_theme.h"
-#include "bt_agent_ota.h"
-#include "bt_link.h"
-#include "c6_ota.h"
 #include "config.h"
 #include "dev_settings.h"
 #include "display_init.h"
-#include "display_video.h"
-#include "h264_pipe.h"
 #include "idle_screen.h"
-#include "splash_screen.h"
 #include "log_capture.h"
-#include "mdns_advertise.h"
 #include "ota_http.h"
 #include "files_http.h"
 #include "lisp_http.h"
 #include "ota_screen.h"
-#include "tcp_server.h"
 #include "touch_input.h"
-#include "ui_mode.h"
-#include "debug_uart_bridge.h"
-#include "vbat_routing.h"
 #include "vesc_can/comm_can.h"
 #include "vesc_battery_calc.h"
 #include "vesc_can/vesc_lisp_poll.h"
@@ -82,25 +73,10 @@ void port_start_app_hook(void)
 #include "vesc_config/vesc_config_transport.h"
 #include "vesc_sim.h"
 #include "vesc_trip_persist.h"
+#include "vesc_ui.h"
 #include "trip_log.h"
 #include "vesc_ui_updater.h"
 #include "wifi_manager.h"
-
-/* The C6 hangs off SDIO on both boards, and sdkconfig.defaults says so. It is
- * still worth asserting here, because sdkconfig.defaults only seeds a build
- * directory that does not exist yet: once build_<board>/sdkconfig is written,
- * a component upgrade that renames or re-defaults these Kconfig choices makes
- * the stale file silently accept the component's new defaults instead. That
- * happened -- jc4880 drifted to SPI transport against an esp32h2 target with
- * reset on GPIO12, none of which is this hardware. The build was clean, the
- * versions all matched, and the only symptom was a co-processor that never
- * answered. Delete build_<board>/sdkconfig and reconfigure if this fires. */
-#if !CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
-#error "esp-hosted must use the SDIO transport — delete build_<board>/sdkconfig and reconfigure"
-#endif
-#if !CONFIG_ESP_HOSTED_CP_TARGET_ESP32C6
-#error "esp-hosted co-processor target must be esp32c6 — delete build_<board>/sdkconfig and reconfigure"
-#endif
 
 static const char *TAG = "main";
 
@@ -127,13 +103,12 @@ extern void lisp_panel_open_async(void);
 
 /* ---- Custom LVGL touch indev fed by touch_input.c ----
  *
- * BSP auto-installs its own LVGL touch indev that reads GT911 directly. We
- * unregister it and create our own pointer-typed indev that pulls from
- * touch_input's shared state, so:
- *   - touch_input is the single GT911 reader (no I2C race),
- *   - in TOUCH_MODE_AA the indev sees pressed=false (LVGL stops getting
- *     events even though polling continues),
- *   - in TOUCH_MODE_LVGL touches flow into the dashboard normally.
+ * The BSP auto-installs its own LVGL touch indev that reads the controller
+ * directly. We unregister it and create our own pointer-typed indev that
+ * pulls from touch_input's shared state, so there is exactly ONE reader on
+ * the touch I2C bus. (On the P4 build this also gated touch away from LVGL
+ * while Android Auto owned the screen; with AA gone the indev is simply the
+ * single reader.)
  *
  * LVGL 8.3 indev API: lv_indev_drv_init + lv_indev_drv_register
  * (lv_indev_create / lv_indev_set_* arrived in LVGL 9). */
@@ -153,7 +128,7 @@ static void lvgl_touch_read_cb(lv_indev_drv_t *drv, lv_indev_data_t *data)
 static void install_lvgl_touch_indev(void)
 {
     /* Drop BSP's auto-installed touch indev (it would race our reader on
-     * the same GT911 over I2C). */
+     * the same touch controller over I2C). */
     lv_indev_t *bsp_indev = bsp_display_get_input_dev();
     if (bsp_indev) {
         if (esp_lv_adapter_unregister_touch(bsp_indev) == ESP_OK) {
@@ -178,6 +153,23 @@ static void install_lvgl_touch_indev(void)
     } else {
         ESP_LOGW(TAG, "custom LVGL touch indev registration failed");
     }
+}
+
+/* Build the GUI-Guider dashboard and make it the live screen. This replaces
+ * the old main/ui_mode.c, which existed only to flip between the dashboard
+ * and the Android Auto projection screen. The dashboard is now the only
+ * screen, so there is no mode to switch. */
+static esp_err_t dashboard_init(void)
+{
+    if (bsp_display_lock(1000) != ESP_OK) {
+        ESP_LOGE(TAG, "lvgl lock timeout building dashboard");
+        return ESP_FAIL;
+    }
+    vesc_ui_init();
+    lv_obj_t *scr = vesc_ui_get_screen();
+    if (scr) lv_scr_load(scr);
+    bsp_display_unlock();
+    return ESP_OK;
 }
 
 /* Re-assembled VESC packets land here. Forwards to the RT-data parser,
@@ -241,12 +233,17 @@ static void on_brightness_changed(uint8_t pct)
 /* dashboard_theme switch hook → re-home the phone-side music tile onto the
  * active theme's widget (or tear it down when the theme has none). Fires on the
  * first build and on every live theme switch, always on the LVGL thread with
- * the BSP lock already held by the caller. */
+ * the BSP lock already held by the caller.
+ *
+ * TODO(port): the body is stubbed out because main/music_info_view.c is not
+ * compiled yet (P4 hardware JPEG decoder for the album art) — see
+ * main/CMakeLists.txt. Restore the two calls once that file builds. */
 static void on_dashboard_theme_switched(lv_obj_t *screen, lv_obj_t *music_tile)
 {
     (void)screen;
-    music_info_view_detach();
-    if (music_tile) music_info_view_attach(music_tile);
+    (void)music_tile;
+    /* music_info_view_detach();
+     * if (music_tile) music_info_view_attach(music_tile); */
 }
 
 /* settings_set_controller_id → here. Reinit TWAI so STATUS_* frames go
@@ -271,25 +268,14 @@ static void on_target_id_changed(uint8_t new_id)
     ESP_LOGI(TAG, "VESC target ID → %u", new_id);
 }
 
-/* settings_set_aa_autoconnect → here. Forwards to the BT agent so it can
- * arm or disarm its auto-reconnect-on-boot loop without a P4 restart. The
- * agent persists the value to its own NVS, so this call is also fine if
- * bt_link_init hasn't completed yet — the UART write is a no-op when the
- * driver isn't installed, and the value re-syncs from the explicit send
- * we issue at boot below. */
-static void on_aa_autoconnect_changed(bool on)
-{
-    bt_link_set_auto_reconnect(on);
-}
-
 void app_main(void)
 {
     /* Install the PSRAM-backed log ring buffer before anything else
      * logs, so the Logs screen in Settings can show the full boot
-     * sequence (PMU register dumps, NVS contents, BLE init, …). */
+     * sequence (NVS contents, BLE init, …). */
     log_capture_init();
 
-    ESP_LOGI(TAG, "ESP32-P4 Android Auto boot, aa_submode=%d", CONNECTION_MODE);
+    ESP_LOGI(TAG, "VESC display boot");
 
     /* Why did we (re)start? A mid-ride restart is invisible on the dashboard
      * but resets every in-RAM total, so the Logs screen has to be able to
@@ -319,9 +305,9 @@ void app_main(void)
         }
     }
 
-    /* Publish our own (P4) firmware version to dev_settings so the Settings
-     * screen can render it. BT + C6 entries get filled in further below as
-     * those subsystems come up. */
+    /* Publish our own firmware version to dev_settings so the Settings screen
+     * can render it. The P4 build also reported the C6 and BT-agent firmware
+     * versions here; neither co-processor exists on ESP32-S3 / ESP32. */
     {
         const esp_app_desc_t *desc = esp_app_get_description();
         if (desc) fw_info_set_p4(desc->version);
@@ -329,15 +315,6 @@ void app_main(void)
     ESP_LOGI(TAG, "HEAP_PROBE: app_main INTERNAL+8BIT free=%u largest=%u",
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-
-#if ENABLE_WALL_CLOCK
-    /* Arm the PMU so the LP domain runs in AUTO mode (falls through to
-     * VBAT/CR2032 when main power collapses). Required for the wall-
-     * clock on the dashboard to survive USB-unplug — without this poke,
-     * a POR wipes the LP_TIMER and the boot_time epoch in LP_STORE2/3.
-     * Has to run before anything else that touches PMU state. */
-    vbat_routing_enable();
-#endif
 
     init_nvs();
     /* Settings cache is now ready for both the UI (settings_ui_init pulls
@@ -357,10 +334,6 @@ void app_main(void)
      * at boot and rolls over to a new trip on reset / battery swap. */
     trip_log_init();
 
-    /* Bump CPU to 400 MHz before any peripheral / WiFi init so APB ratio
-     * stays consistent. No-op unless CONFIG_AA_OVERCLOCK_400 is set. */
-    aa_overclock_400mhz_apply();
-
     if (display_init() != ESP_OK) {
         ESP_LOGW(TAG, "display init failed — UI disabled");
     }
@@ -370,10 +343,8 @@ void app_main(void)
     bsp_display_brightness_set(settings_get_screen_brightness());
     settings_register_brightness_cb(on_brightness_changed);
 
-    /* Boot splash GIF (if /vescfs/splash.gif exists). Top-layer overlay that
-     * covers the ~5 s dashboard build below; hidden once the dashboard is up
-     * (splash_screen_hide after ui_mode_init), with a safety auto-hide. */
-    splash_screen_show();
+    /* TODO(port): boot splash GIF. main/splash_screen.c is not compiled yet —
+     * it pre-rotates frames with the P4 PPA. See main/CMakeLists.txt. */
 
     /* idle first, ota second so the OTA overlay sits on top in z-order
      * (children of lv_scr_act() are stacked in creation order). */
@@ -381,68 +352,53 @@ void app_main(void)
     ota_screen_init();
 
     /* Replace BSP's auto-installed LVGL touch indev with our own that reads
-     * from touch_input's shared state. Single GT911 reader for both AA and
-     * VESC modes — must run before ui_mode_init so the dashboard sees touch
-     * from frame 1. */
+     * from touch_input's shared state — single reader on the touch bus. Must
+     * run before dashboard_init so the dashboard sees touch from frame 1. */
     install_lvgl_touch_indev();
 
     /* Register the music-tile re-home hook BEFORE the dashboard is built, so
-     * the very first theme build (inside ui_mode_init) attaches the music tile
-     * via the same path a live theme switch uses. */
+     * the very first theme build (inside dashboard_init) attaches the music
+     * tile via the same path a live theme switch uses. */
     dashboard_theme_set_switch_cb(on_dashboard_theme_switched);
 
-    /* Build the VESC dashboard offscreen and arm the 3-finger gesture
-     * (works in both AA and VESC modes, even before phone connects).
+    /* Build the VESC dashboard.
      *
-     * super_vesc_ui_init() walks ~1700 lines of GUI Guider widget creation
+     * vesc_ui_init() walks ~1700 lines of GUI Guider widget creation
      * (~750 lv_obj_set_style_* calls) under the BSP lock on prio-1 main task
-     * → IDLE0 starves for ~5 s and CONFIG_ESP_TASK_WDT_TIMEOUT_S=5 fires.
-     * Detach IDLE0 from TWDT just for this one-shot init. */
+     * → IDLE0 starves for ~5 s on the P4 and CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
+     * fires. Expect this to be SLOWER on a 240 MHz ESP32-S3. Detach IDLE0
+     * from TWDT just for this one-shot init. */
     TaskHandle_t idle0 = xTaskGetIdleTaskHandleForCore(0);
     bool wdt_paused = (idle0 && esp_task_wdt_delete(idle0) == ESP_OK);
-    esp_err_t ui_err = ui_mode_init();
+    esp_err_t ui_err = dashboard_init();
     if (wdt_paused) {
         esp_task_wdt_add(idle0);
     }
 
-    /* Dashboard (or idle, on failure) is now the live screen underneath —
-     * drop the boot splash overlay. No-op if no splash was shown. */
-    splash_screen_hide();
     if (ui_err == ESP_OK) {
-        /* 3-finger gesture toggles between VESC dashboard and AA projection.
-         * Only meaningful once the AA stack is up. The GT911 polling task
-         * starts unconditionally so LVGL touch keeps working. */
-        touch_input_set_gesture_cb(ui_mode_toggle);
         /* Left-edge swipe opens the LISP quick-action panel. The handler
          * marshals to the LVGL task and no-ops unless the dashboard is the
          * live screen, so registering it unconditionally is safe. */
         touch_input_set_edge_swipe_cb(lisp_panel_open_async);
         touch_input_start(NULL, NULL);
-
-        /* The phone-side music tile is now attached by the dashboard-theme
-         * switch hook (on_dashboard_theme_switched), fired during the first
-         * theme build inside ui_mode_init — no manual attach needed here, and
-         * it re-homes correctly across live theme switches. */
     }
 
-    /* Debug bridge over UART0 console: host-driven screenshot + touch
-     * injection for UI test automation. No-op stub unless built with
-     * CONFIG_DEBUG_UART_BRIDGE. Needs the display + indev up (done above). */
-#if CONFIG_DEBUG_UART_BRIDGE
-    debug_uart_bridge_init();
-#endif
+    /* TODO(port): debug bridge over the UART0 console (host-driven screenshot
+     * + touch injection). main/debug_uart_bridge.c is not compiled yet — it
+     * uses the P4 hardware JPEG encoder. See main/CMakeLists.txt. */
 
-    /* VESC CAN bring-up. Independent from the AA pipeline — runs the
-     * second the dashboard is alive so RT data starts streaming even
-     * before WiFi is up. The decode-side handler routes reassembled
-     * VESC packets to vesc_rt_data (and vesc_lisp_poll if enabled). */
+    /* VESC CAN bring-up — runs the second the dashboard is alive so RT data
+     * starts streaming even before Wi-Fi is up. The decode-side handler routes
+     * reassembled VESC packets to vesc_rt_data (and vesc_lisp_poll if
+     * enabled). */
     int     can_kbps = (int)settings_get_can_speed();
     uint8_t ctrl_id  = settings_get_controller_id();
     uint8_t tgt_id   = settings_get_target_vesc_id();
 
     if (settings_get_vesc_emulator()) {
         /* Synthetic source — runs a scripted drive cycle and injects into
-         * vesc_rt_data. No CAN driver, no real polling. */
+         * vesc_rt_data. No CAN driver, no real polling. Useful on the bench
+         * before the CAN transceiver is wired up. */
         vesc_rt_data_init(tgt_id, CONFIG_VESC_CAN_RT_INTERVAL_MS);
         vesc_sim_start();
         ESP_LOGW(TAG, "VESC EMULATOR active — no real CAN");
@@ -506,31 +462,13 @@ void app_main(void)
         ESP_LOGW(TAG, "VESC CAN init failed — dashboard will show no data");
     }
 
-#if CONFIG_C6_OTA_ENABLED
-    c6_ota_status_t ota = c6_ota_check_and_update();
-    if (ota == C6_OTA_STATUS_UPDATED) {
-        ESP_LOGW(TAG, "C6 updated — restarting host to resync");
-        vTaskDelay(pdMS_TO_TICKS(500));
-        esp_restart();
-    } else if (ota == C6_OTA_STATUS_FAILED) {
-        ESP_LOGE(TAG, "C6 OTA failed — proceeding with current slave fw");
-    }
-    /* If OTA showed itself, drop it now that we're past the update phase. */
-    ota_screen_hide();
-
-    /* c6_ota.c populated the slave-version cache during the check above;
-     * surface it on the Settings screen. */
-    fw_info_set_c6(c6_ota_get_slave_version_str());
-#endif
-
-    /* NimBLE host on top of C6's BT controller (ESP-Hosted VHCI). Starts
-     * advertising NUS so VESC Tool can connect over BLE and talk to the
-     * VESC controller via the CAN bridge in vesc_packet_dispatch.
+    /* NimBLE on the native controller. Starts advertising NUS so VESC Tool
+     * can connect over BLE and talk to the VESC controller via the CAN bridge
+     * in vesc_packet_dispatch.
      *
      * ble_nus_init brings up the outbound ring buffer + TX task BEFORE
      * NimBLE so the first reply that lands during VESC Tool's handshake
-     * already has somewhere to queue without back-pressuring the CAN
-     * task. */
+     * already has somewhere to queue without back-pressuring the CAN task. */
     ble_nus_init();
     if (ble_host_init() != ESP_OK) {
         ESP_LOGW(TAG, "BLE host init failed — VESC Tool over BLE unavailable");
@@ -545,18 +483,12 @@ void app_main(void)
      * current setpoint to the LISP arbiter when the CAN poll task is running. */
     pas_init();
 
-    idle_screen_show("Android Auto", "Initialising Wi-Fi...");
-
-#if CONNECTION_MODE == MODE_WIRELESS_HELPER
-    /* Not ESP_ERROR_CHECK: the Wi-Fi MAC is on the C6 and this call fails
-     * whenever that link is down. Aborting here panicked the P4 into a reboot
-     * loop, which is a far worse outcome than losing Android Auto -- the
-     * dashboard runs on CAN and is already up by this point. Returning from
-     * app_main leaves every other task running. */
+    /* Wi-Fi last: everything above works without it. Not ESP_ERROR_CHECK —
+     * a Wi-Fi failure must not take the dashboard down with it, and returning
+     * from app_main leaves every other task running. */
     if (wifi_manager_start() != ESP_OK ||
         wifi_manager_wait_ready(30000) != ESP_OK) {
-        ESP_LOGE(TAG, "wifi setup failed, halting");
-        idle_screen_show("Android Auto", "Wi-Fi setup failed");
+        ESP_LOGE(TAG, "wifi setup failed — web UI and HTTP OTA unavailable");
         return;
     }
 
@@ -566,74 +498,15 @@ void app_main(void)
                  ap->ssid, ap->password, ap->bssid_str, (unsigned)ap->channel);
     }
 
-    ESP_ERROR_CHECK(mdns_advertise_start());
-    ESP_ERROR_CHECK(tcp_server_start(AA_TCP_PORT));
-    /* Plain HTTP OTA server — phone joins the SoftAP for AA anyway, so
-     * scripts/ota_push.sh can hit http://<gw>/ota from a laptop on the
-     * same AP. No-op when CONFIG_OTA_HTTP_ENABLED is unset. */
+    /* Plain HTTP OTA server. No-op when CONFIG_OTA_HTTP_ENABLED is unset. */
     ota_http_start();
     /* Attach the web file manager (/files) to the OTA HTTP server — browse
-     * /vescfs + microSD from any browser on the SoftAP. No-op if the server
+     * /vescfs + microSD from any browser on the AP. No-op if the server
      * didn't start. */
     files_http_register(ota_http_get_server());
     /* Web LISP editor (/lisp) on the same server — edit + upload the VESC's
-     * LispBM script from a browser instead of the 800x480 touch keyboard. */
+     * LispBM script from a browser instead of the touch keyboard. */
     lisp_http_register(ota_http_get_server());
-
-    /* Display sink first — it captures the panel handle from BSP and waits
-     * idle until first frame. Then the H.264 pipe; push() is a no-op until
-     * the ring buffer is allocated, so it must be ready before the first
-     * AVMediaIndication arrives. */
-    if (display_video_init() != ESP_OK) {
-        ESP_LOGW(TAG, "video sink failed — frames will be decoded but not shown");
-    }
-    if (h264_pipe_init() != ESP_OK) {
-        ESP_LOGW(TAG, "H.264 decoder failed to start — video will be silent");
-    }
-
-    /* Hand off the AP credentials + our IP to the external D1 Mini ESP32
-     * BT agent over UART1 (P4 GPIO 21/22 ↔ D1 Mini GPIO 16/17). The agent
-     * uses these in the AA Wireless setup protocol so the phone joins our
-     * SoftAP and connects back to TCP at the IP/port below.
-     *
-     * AP mode only — STA bench builds skip this since the dev's existing
-     * laptop network already has its own credentials/topology. */
-    if (ap) {
-        /* bt_link_init drives BT_AGENT_RST/IO0 itself before bringing the
-         * UART up — we no longer need to babysit the CH2104 auto-reset
-         * transients with a blind delay here. */
-        bt_link_init();
-        /* If CONFIG_BT_AGENT_OTA_ENABLED, compare BT-VER: against expected
-         * and reflash on mismatch / silence. No-op when disabled. */
-        bt_agent_ota_check_and_update();
-        /* bt_agent_ota_check_and_update parses the BT-VER:<v> line emitted
-         * by the agent on boot; whether or not an OTA actually ran, the
-         * version string is now available. Surface it on Settings.
-         *
-         * When OTA is disabled the check-and-update call is a no-op and
-         * returns before the agent has had a chance to send BT-VER: over
-         * UART — so poll for up to ~2 s (20×100 ms) before giving up.
-         * Without this, the dashboard pinned "unknown" forever even when
-         * the agent later printed its version in the next 500 ms. */
-        const char *bt_ver = bt_agent_get_version();
-        for (int i = 0; !bt_ver && i < 20; i++) {
-            vTaskDelay(pdMS_TO_TICKS(100));
-            bt_ver = bt_agent_get_version();
-        }
-        fw_info_set_bt(bt_ver);
-        esp_netif_t *ap_netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
-        esp_netif_ip_info_t ap_ip = {0};
-        if (ap_netif) esp_netif_get_ip_info(ap_netif, &ap_ip);
-        char ip_str[16];
-        snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ap_ip.ip));
-        bt_link_publish_wifi(ap->ssid, ap->password, ap->bssid_str,
-                             ip_str, AA_TCP_PORT);
-        /* Sync the user-controlled auto-reconnect flag to the agent. Re-sent
-         * on every boot so a fresh agent (post-OTA or fresh-flash with empty
-         * NVS) doesn't start paging the last phone against the user's wish. */
-        bt_link_set_auto_reconnect(settings_get_aa_autoconnect());
-        settings_register_aa_autoconnect_cb(on_aa_autoconnect_changed);
-    }
 
     /* Compose a one-line status with our IP for the idle screen.
      * AP mode shows the SSID; STA mode shows the joined network IP. */
@@ -643,25 +516,12 @@ void app_main(void)
         esp_netif_t *n = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
         if (n) esp_netif_get_ip_info(n, &ip_info);
         snprintf(status_line, sizeof(status_line),
-                 "AP %s | %d.%d.%d.%d | port %d",
-                 ap->ssid, IP2STR(&ip_info.ip), AA_TCP_PORT);
+                 "AP %s | %d.%d.%d.%d", ap->ssid, IP2STR(&ip_info.ip));
     } else {
         esp_netif_t *n = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
         if (n) esp_netif_get_ip_info(n, &ip_info);
         snprintf(status_line, sizeof(status_line),
-                 "%d.%d.%d.%d | port %d",
-                 IP2STR(&ip_info.ip), AA_TCP_PORT);
+                 "%d.%d.%d.%d", IP2STR(&ip_info.ip));
     }
-    idle_screen_show("Waiting for phone", status_line);
-    /* Now that we're actually listening, give the user a manual "Connect"
-     * shortcut — pages the last paired phone over BT regardless of the
-     * auto-reconnect toggle. Hidden during the earlier boot states. */
-    idle_screen_set_connect_visible(true);
-
-    ESP_LOGI(TAG, "head unit ready, waiting for Wireless Helper");
-#elif CONNECTION_MODE == MODE_BT_CLASSIC
-#error "MODE_BT_CLASSIC: not implemented yet (Stage 1 covers Mode B only)"
-#else
-#error "CONNECTION_MODE not set"
-#endif
+    ESP_LOGI(TAG, "web UI ready: %s", status_line);
 }

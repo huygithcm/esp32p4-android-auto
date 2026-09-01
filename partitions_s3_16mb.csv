@@ -1,0 +1,21 @@
+# Name,     Type, SubType,  Offset,    Size
+# ESP32-S3, 16 MB flash. Sized from the P4 image with Android Auto removed:
+# roughly 2.2-2.5 MB, against ~4.2 MB with AA (see docs/ESP32_S3_PORT_PLAN.md
+# §3). 3 MB OTA slots leave ~0.5 MB of headroom each.
+#
+#   0x00000..0x12000   bootloader + nvs + otadata + phy_init
+#   0x20000..0x320000  ota_0   (3 MB)
+#   0x320000..0x620000 ota_1   (3 MB)
+#   0x620000..0x720000 storage (LittleFS, 1 MB — /vescfs)
+#   0x720000..0x1000000 triplog (~8.875 MB raw circular trip log)
+#
+# trip_log reads the partition size dynamically (esp_partition), so resizing
+# triplog needs no code change — but it does require a full reflash (the
+# partition table can't be changed over OTA), which wipes storage + triplog.
+nvs,        data, nvs,      0x9000,    0x6000
+otadata,    data, ota,      0xf000,    0x2000
+phy_init,   data, phy,      0x11000,   0x1000
+ota_0,      app,  ota_0,    0x20000,   0x300000
+ota_1,      app,  ota_1,    0x320000,  0x300000
+storage,    data, spiffs,   0x620000,  0x100000
+triplog,    data, 0x40,     0x720000,  0x8E0000

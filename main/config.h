@@ -1,51 +1,20 @@
 #pragma once
 
-#define MODE_BT_CLASSIC       1
-#define MODE_WIRELESS_HELPER  2
-
-#ifndef CONNECTION_MODE
-#define CONNECTION_MODE MODE_WIRELESS_HELPER
-#endif
-
-/* Real AA head unit listens on 5288. Wireless Helper APK has this port
- * hardcoded — it grabs only the IP from mDNS and ignores the published port. */
-#define AA_TCP_PORT            5288
-#define AA_MDNS_HOSTNAME       "android-auto"
-#define AA_MDNS_INSTANCE_NAME  "ESP32-P4 Android Auto"
-/* Wireless Helper APK browses for _aawireless._tcp; this is the de-facto
- * service type used by hostapd-based AA dongles. */
-#define AA_MDNS_SERVICE_TYPE   "_aawireless"
-#define AA_MDNS_PROTO          "_tcp"
-
-/* Audio service advertisement. Gearhead 1.7 on the Nothing A142 hard-rejects
- * a head unit without audio channels — observed: SD response 168 bytes (no
- * audio), ~950 ms later recv_decrypted ERR_INVALID_STATE and the client
- * closes the TCP socket. Has to stay 1 for gearhead to project at all.
- * Toggling this off only makes sense if we ever find a phone/version pair
- * that doesn't require audio. */
-#define ENABLE_AUDIO           1
-
-/* Per-stream audio control. Per openauto's ServiceFactory the three audio
- * AVChannels are independent: System (type 2 — UI beeps) is mandatory,
- * Speech (type 1 — nav/voice prompts, low-bandwidth 16 kHz mono) and
- * Media (type 3 — music/podcasts, 48 kHz stereo, the heavy one) can be
- * dropped individually without breaking projection.
+/* Hostname used to build the "open the web UI" URL in the QR screen
+ * (components/qr_info). Was AA_MDNS_HOSTNAME on the Android Auto build.
  *
- * We don't have an audio sink and the user wants media to play through
- * the phone's headphones anyway, so drop Media to avoid streaming ~1 MB/min
- * of audio bytes that compete with the video path on TCP. Phone routes
- * Media back to its own AudioManager when the channel isn't advertised. */
-#define ENABLE_AUDIO_MEDIA     0  /* 48 kHz stereo music — dropped */
-#define ENABLE_AUDIO_SPEECH    0  /* 16 kHz mono nav prompts / Google Assistant —
-                                     dropped so navigation TTS stays on the phone
-                                     headphones instead of getting ack'd into the
-                                     void on our head unit. */
-#define ENABLE_AUDIO_SYSTEM    1  /* UI beeps — gearhead requires this */
+ * TODO(port): main/mdns_advertise.c was removed with the AA stack — it only
+ * advertised the _aawireless._tcp service the Wireless Helper APK browses for.
+ * Until an mDNS responder is registered again, `<host>.local` does not resolve
+ * and the QR screen's URL only works via the raw IP it also renders. */
+#define DEVICE_MDNS_HOSTNAME   "vesc-display"
 
-/* Dashboard wall clock (cur_time_label + Time row in Settings + VBAT
- * AUTO-mode routing for LP domain). Set to 0 if the CR2032 on H8 is
- * draining too fast — disabling shuts off the LP-on-VBAT routing so
- * the LP domain runs from VDDA only, eliminating any battery drain
- * path through the chip. Coin cell still leaks ~30 µA via R52 → EN
- * which is unavoidable in hardware. */
+/* Dashboard wall clock (cur_time_label + Time row in Settings).
+ *
+ * 0 on this branch. The P4 board kept time across a power cut by routing its
+ * LP domain to a CR2032 through the PMU (main/vbat_routing.c, removed here).
+ * Neither ESP32-S3 nor ESP32 has a VBAT pin for the RTC domain, so surviving
+ * power loss needs an external RTC (DS3231 on the touch I2C bus is the obvious
+ * candidate). Set to 1 only once such a source exists — otherwise the clock
+ * shows garbage after every power cycle. */
 #define ENABLE_WALL_CLOCK      0

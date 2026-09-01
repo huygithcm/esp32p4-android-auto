@@ -1,134 +1,80 @@
-menu "Android Auto Head Unit"
+menu "VESC Display Head Unit"
 
     choice BOARD_MODEL
         prompt "Target hardware board"
-        default BOARD_WAVESHARE_43
+        default BOARD_S3_RGB_800X480
         help
             Selects the physical head-unit board. Drives board-specific GPIO
-            pins (LCD backlight/reset, I2S, BT-agent UART) and MIPI-DSI panel
-            timing that can't be expressed through plain Kconfig — see the
-            CONFIG_BOARD_* #if branches in the BSP and main/bt_link.h.
+            pins (LCD backlight/reset, panel timing, touch) that can't be
+            expressed through plain Kconfig — see the CONFIG_BOARD_* #if
+            branches in whichever components/bsp_board implementation is
+            active.
 
             This choice alone does NOT set flash size / partition table / CAN
-            pins; those live in the per-board sdkconfig.defaults.<board> overlay
-            (see scripts/build_board.sh). Keep them in lockstep with this choice.
+            pins; those live in the per-board sdkconfig.defaults.<board>
+            overlay. Keep them in lockstep with this choice.
 
-        config BOARD_WAVESHARE_43
-            bool "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 (32 MB flash)"
+            PLACEHOLDER: these three entries are the targets from
+            docs/ESP32_S3_PORT_PLAN.md. Rename / replace them once the actual
+            panels are pinned down — no BSP implements any of them yet.
 
-        config BOARD_JC4880P443C
-            bool "Guition JC4880P443C_I_W (16 MB flash)"
+        config BOARD_S3_RGB_800X480
+            bool "ESP32-S3 + 800x480 RGB panel (4.3\" / 7\")"
+
+        config BOARD_S3_SMALL
+            bool "ESP32-S3 + small SPI/QSPI panel (2.8\")"
+
+        config BOARD_ESP32_SMALL
+            bool "ESP32 (classic) + small SPI panel (2.8\")"
     endchoice
 
-    choice AA_WIFI_ROLE
+    choice WIFI_ROLE
         prompt "WiFi role"
-        default AA_WIFI_ROLE_AP
+        default WIFI_ROLE_AP
         help
-            Real Android Auto head units run as the WiFi access point
-            (the phone joins the head unit's network). STA mode is only
-            useful for bench testing where both devices share an
-            existing WiFi network.
+            AP: the head unit runs its own SoftAP and you join it to reach the
+            web UI (/files, /lisp) and HTTP OTA. STA: join an existing network
+            instead — handy on the bench.
 
-        config AA_WIFI_ROLE_AP
-            bool "SoftAP (production)"
+        config WIFI_ROLE_AP
+            bool "SoftAP"
 
-        config AA_WIFI_ROLE_STA
-            bool "Station — connect to existing WiFi (bench test only)"
+        config WIFI_ROLE_STA
+            bool "Station — connect to existing WiFi"
     endchoice
 
-    config AA_AP_SSID_PREFIX
+    config WIFI_AP_SSID_PREFIX
         string "AP SSID prefix"
-        depends on AA_WIFI_ROLE_AP
-        default "AAHU"
+        depends on WIFI_ROLE_AP
+        default "VESC"
         help
-            Last 4 hex digits of the MAC are appended, e.g. "AAHU-1A2B".
+            Last 4 hex digits of the MAC are appended, e.g. "VESC-1A2B".
 
-    config AA_AP_PASSWORD
+    config WIFI_AP_PASSWORD
         string "AP password (WPA2-PSK, min 8 chars)"
-        depends on AA_WIFI_ROLE_AP
+        depends on WIFI_ROLE_AP
         default "12345678"
 
-    config AA_AP_CHANNEL
+    config WIFI_AP_CHANNEL
         int "AP channel (1-13)"
-        depends on AA_WIFI_ROLE_AP
+        depends on WIFI_ROLE_AP
         default 6
         range 1 13
 
-    config AA_WIFI_SSID
+    config WIFI_STA_SSID
         string "Bench WiFi SSID"
-        depends on AA_WIFI_ROLE_STA
+        depends on WIFI_ROLE_STA
         default "myssid"
 
-    config AA_WIFI_PASSWORD
+    config WIFI_STA_PASSWORD
         string "Bench WiFi password"
-        depends on AA_WIFI_ROLE_STA
+        depends on WIFI_ROLE_STA
         default "mypassword"
 
-    config AA_WIFI_MAX_RETRY
+    config WIFI_STA_MAX_RETRY
         int "Maximum STA connect retries"
-        depends on AA_WIFI_ROLE_STA
+        depends on WIFI_ROLE_STA
         default 10
-
-    config AA_OVERCLOCK_400
-        bool "Overclock CPU to 400 MHz (unsupported on rev <3.0)"
-        default n
-        help
-            ESP32-P4 silicon ≤ rev 1.x is officially capped at 360 MHz in
-            ESP-IDF. The CPLL is physically capable of 400 MHz on most
-            engineering samples but Espressif provides no guarantees.
-            With this option enabled, app_main reprograms CPLL to 400 MHz
-            and switches CPU divider to 1 right after NVS init.
-            Disable this if the chip becomes unstable or refuses to boot.
-
-    menu "BT Agent OTA (Mode A)"
-
-        config BT_AGENT_OTA_ENABLED
-            bool "Reflash BT agent on version mismatch"
-            default n
-            help
-                On boot, parse the agent's BT-VER:<version> line and compare
-                to BT_AGENT_FW_VERSION below. On mismatch, force the D1 Mini
-                into ROM bootloader (via GPIO24/25) and reflash from the
-                binary embedded at components/bt_agent_fw/bt_agent_fw.bin.
-                Uses the espressif/esp_serial_flasher managed component.
-
-                Build will fail with a clear error if enabled without the
-                binary present. To disable OTA without removing the binary,
-                just keep this option n.
-
-        config BT_AGENT_FW_VERSION
-            string "Expected BT agent firmware version"
-            depends on BT_AGENT_OTA_ENABLED
-            default "0.6.3"
-            help
-                Must exactly match what the agent emits on boot via
-                `BT-VER:<version>`. Bump this in lockstep with the agent
-                firmware build. If the agent reports a different value
-                (or no value within BT_AGENT_VERSION_TIMEOUT_MS), OTA fires.
-
-        config BT_AGENT_VERSION_TIMEOUT_MS
-            int "Timeout waiting for BT-VER: line (ms)"
-            depends on BT_AGENT_OTA_ENABLED
-            default 3000
-            range 500 30000
-            help
-                If the agent doesn't emit a BT-VER: line within this window
-                after bt_link_init's reset, treat it as a missing/broken
-                firmware and trigger OTA. Bump if the agent's app is slow
-                to start (NVS scan, sensor init, etc.).
-
-        config BT_AGENT_FLASH_BAUD
-            int "Flasher baud rate during OTA"
-            depends on BT_AGENT_OTA_ENABLED
-            default 460800
-            help
-                ROM/stub bootloader sync is always at 115200, then renegotiates
-                up to this rate for the actual write. 460800 over short
-                direct UART wires is the usual sweet spot; 921600 also
-                works but cuts error margin. Drop to 115200 if you suspect
-                signal-integrity issues on a long noisy line.
-
-    endmenu
 
     menu "OTA over WiFi"
 
@@ -136,10 +82,9 @@ menu "Android Auto Head Unit"
             bool "Enable HTTP OTA server"
             default y
             help
-                Starts a small HTTP server (default port 80) on the SoftAP
-                interface after WiFi is up. POST the new app binary to
-                /ota and the device will flash the inactive OTA slot and
-                reboot. See scripts/ota_push.sh.
+                Starts a small HTTP server (default port 80) after WiFi is up.
+                POST the new app binary to /ota and the device will flash the
+                inactive OTA slot and reboot. See scripts/ota_push.sh.
 
         config OTA_HTTP_PORT
             int "OTA HTTP port"
@@ -166,16 +111,16 @@ menu "Android Auto Head Unit"
         default n
         help
             Registers esp_console commands on the UART0 console for host-driven
-            UI test automation (scripts/uart_debug.py):
-              screenshot  — capture lv_scr_act() and stream it back as a
-                            base64-framed JPEG (HW-encoded) or raw RGB565,
-                            with logging muted during the transfer.
-              tap / swipe / touchdown|up|move — inject synthetic LVGL pointer
-                            events in landscape coords (0..799 x 0..479).
+            UI test automation (scripts/uart_debug.py): screenshot, tap, swipe,
+            touchdown/up/move.
 
-            Costs flash (esp_console + JPEG encoder) and ~1 MB PSRAM (lazily
-            allocated on first screenshot). Also forces LV_USE_SNAPSHOT on.
-            Leave OFF for production / OTA-tight builds (e.g. jc4880).
+            NOT BUILDABLE YET on this branch — main/debug_uart_bridge.c is
+            commented out of main/CMakeLists.txt because its screenshot path
+            uses the ESP32-P4 hardware JPEG encoder, which neither S3 nor ESP32
+            has. The raw RGB565 path in the same file needs no encoder.
+
+            Costs flash and ~1 MB PSRAM (lazily allocated on first screenshot).
+            Also forces LV_USE_SNAPSHOT on. Leave OFF for production builds.
 
     config DEBUG_UART_BRIDGE_JPEG_QUALITY
         int "Default screenshot JPEG quality (1-100)"

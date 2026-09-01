@@ -1,0 +1,21 @@
+# Per-board overlay: Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 (32 MB flash).
+#
+# Layered on top of sdkconfig.defaults via scripts/build_board.sh:
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.waveshare"
+#
+# These values already match the base sdkconfig.defaults (so a plain `idf.py
+# build` builds Waveshare); they are re-asserted here for symmetry with the
+# jc4880 overlay and to make the board selection explicit.
+CONFIG_BOARD_WAVESHARE_43=y
+
+# Flash — 32 MB GD25Q256 on the Waveshare 4.3 board.
+CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="32MB"
+
+# Partition table — 32 MB layout (8 MB OTA slots + 4 MB storage + 12 MB triplog).
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+
+# VESC CAN (SN65HVD230 transceiver).
+CONFIG_VESC_CAN_TX_GPIO=48
+CONFIG_VESC_CAN_RX_GPIO=47

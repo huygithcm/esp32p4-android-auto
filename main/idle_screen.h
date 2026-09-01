@@ -29,11 +29,6 @@ void idle_screen_refresh(void);
 
 void idle_screen_hide(void);
 
-/* Show or hide a "Connect" button under the subtitle. Used in "Waiting
- * for phone" state to give the user a manual override for paging the
- * paired phone (BT agent's auto-reconnect can be off, or stalled in
- * backoff). Tap routes through bt_link_request_connect_now(). */
-void idle_screen_set_connect_visible(bool visible);
 
 #ifdef __cplusplus
 }

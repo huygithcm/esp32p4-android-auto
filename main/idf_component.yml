@@ -1,31 +1,22 @@
 dependencies:
   idf:
     version: ">=5.5.0"
-  espressif/esp_hosted:
-    version: "^2.0.0"
-  espressif/esp_wifi_remote:
-    version: "^0.13.0"
-  espressif/mdns:
-    version: "^1.8.0"
-  # SW H.264 decoder for the AA video channel. P4 has no HW decoder; the
-  # documented limit is ~31 fps at 640x480 single-core, which is why our SDR
-  # advertises 480p (see build_video_av_channel in aa_service.c).
-  espressif/esp_h264:
-    version: "*"
-  # SIMD-accelerated image-format conversion (PIE instructions on P4).
-  # Used in display_video.c for I420 → RGB565 — meaningfully faster than the
-  # naive C BT.601 loop. PPA handles the 90° rotation on the RGB output.
-  espressif/esp_image_effects:
-    version: "^1.0.1"
-  # ROM-bootloader serial flasher protocol — used by bt_agent_ota to reflash
-  # the D1 Mini ESP32 (BT agent) over UART when its firmware version drifts
-  # from CONFIG_BT_AGENT_FW_VERSION. Library is dead-stripped by the linker
-  # when CONFIG_BT_AGENT_OTA_ENABLED is unset (no callers).
-  espressif/esp-serial-flasher:
-    version: "^1.7.0"
-    rules:
-      - if: "idf_version >=5.0"
   # LittleFS for the trip-history store (real folders /trips/<id>/, power-loss
   # safe, good for many small log files). Mounted on the "storage" partition.
   joltwallet/littlefs:
     version: "^1.14.0"
+
+# Removed with the Android Auto stack — do not re-add unless AA comes back:
+#   espressif/esp_hosted        P4 had no radio; the C6 was the Wi-Fi/BT
+#                               co-processor. ESP32-S3 / ESP32 have their own,
+#                               so esp_wifi and the NimBLE controller are native.
+#   espressif/esp_wifi_remote   same reason.
+#   espressif/esp_h264          software H.264 decoder for the AA video channel.
+#   espressif/esp_image_effects I420 -> RGB565 for the AA video sink (PIE
+#                               instructions, P4-only anyway).
+#   espressif/esp-serial-flasher reflashed the external BT-agent module.
+#
+# The display stack (esp_lvgl_adapter, esp_lcd_touch_gt911, the panel driver)
+# used to be pulled in transitively by the P4 BSP. Whichever bsp_board
+# implementation you write must declare its own panel/touch dependencies here
+# or in its own idf_component.yml — see components/bsp_board/README.md.

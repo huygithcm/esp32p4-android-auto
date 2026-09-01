@@ -1,0 +1,270 @@
+# Target
+CONFIG_IDF_TARGET="esp32p4"
+
+# Chip revision — support v1.x (pre-v3.0 silicon)
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_100=y
+
+# SPIRAM (PSRAM) — needed for frame buffers on ESP32-P4
+# (Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 ships with 32MB Hex PSRAM @200MHz)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+CONFIG_SPIRAM_SPEED_200M=y
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+# Skip the ~1 s walk over all 32 MB of PSRAM at boot. Useful only for the
+# first bring-up; once the chip is known good, it just steals boot time.
+CONFIG_SPIRAM_MEMTEST=n
+# (Skipping CONFIG_SPIRAM_XIP_FROM_PSRAM and CONFIG_CACHE_L2_CACHE_256KB:
+#  they sound like nice optimizations but eat enough internal SRAM that
+#  FreeRTOS fails to allocate the IdleTask stack on boot.)
+
+# USB Host
+CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE=1024
+CONFIG_USB_HOST_HW_BUFFER_BIAS_BALANCED=y
+
+# LVGL — using main/lv_conf.h (the file copied from Super_VESC_Display).
+# CONFIG_LV_CONF_SKIP=n tells the LVGL package to '#include "lv_conf.h"'
+# instead of generating one from Kconfig values; the header is found via
+# the global -I${CMAKE_SOURCE_DIR}/main set in the root CMakeLists.txt.
+CONFIG_LV_CONF_SKIP=n
+CONFIG_LV_COLOR_DEPTH_16=y
+CONFIG_LV_FONT_MONTSERRAT_32=y
+
+# Waveshare BSP — never abort() on init errors. GT911 touch occasionally
+# fails its first I2C read on cold boot (timing-sensitive); we want the
+# display to come up anyway and the caller to handle the error.
+CONFIG_BSP_ERROR_CHECK=n
+
+# ===== ESP-Hosted (P4 host <-> C6 slave over SDIO) =====
+CONFIG_ESP_HOSTED_ENABLED=y
+CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE=y
+CONFIG_ESP_HOSTED_IDF_SLAVE_TARGET="esp32c6"
+
+CONFIG_ESP_HOSTED_SDIO_SLOT_1=y
+CONFIG_ESP_HOSTED_SDIO_4_BIT_BUS=y
+CONFIG_ESP_HOSTED_SDIO_CLOCK_FREQ_KHZ=40000
+
+CONFIG_ESP_HOSTED_SDIO_PIN_CMD=19
+CONFIG_ESP_HOSTED_SDIO_PIN_CLK=18
+CONFIG_ESP_HOSTED_SDIO_PIN_D0=14
+CONFIG_ESP_HOSTED_SDIO_PIN_D1=15
+CONFIG_ESP_HOSTED_SDIO_PIN_D2=16
+CONFIG_ESP_HOSTED_SDIO_PIN_D3=17
+CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE=54
+
+CONFIG_ESP_HOSTED_SDIO_OPTIMIZATION_RX_STREAMING_MODE=y
+CONFIG_ESP_HOSTED_SDIO_TX_Q_SIZE=20
+CONFIG_ESP_HOSTED_SDIO_RX_Q_SIZE=20
+# Mempool wants one contiguous DMA-capable internal-RAM block of ~48 KB
+# (rx_q_size+11 buffers × MAX_SDIO_BUFFER_SIZE). After the code growth in
+# c5bdf39 (log_capture) + fbb6402 the largest free DMA-internal block at
+# host_init time hovers right around that threshold and intermittently
+# fails: `HS_MP: mempool create failed: no mem` → sdio_mempool_create
+# assert → boot-loop. Disabling mempool makes ESP-Hosted heap_caps_malloc
+# each 1.5 KB buffer on demand — extra alloc/free traffic on RX, but no
+# single-contig requirement, so boot is deterministic.
+CONFIG_ESP_HOSTED_USE_MEMPOOL=n
+# Slave reset hold defaults to 1500 ms — that's the dominant chunk of boot.
+# 100 ms is plenty for the C6 to come up out of reset.
+CONFIG_ESP_HOSTED_SDIO_RESET_DELAY_MS=100
+
+# Reflash the D1 Mini BT agent over UART on version mismatch. With this on,
+# P4 compares the agent's BT-VER: against CONFIG_BT_AGENT_FW_VERSION at boot
+# and pushes the embedded bt_agent_fw.bin.gz when they differ.
+CONFIG_BT_AGENT_OTA_ENABLED=y
+
+# Must match what the embedded bt_agent firmware emits on boot via
+# `BT-VER:<v>`. Bump in lockstep with tools/bt_agent's FW_VERSION
+# when repacking bt_agent_fw.bin.gz. Pinned here too (not just
+# Kconfig.projbuild's default) so existing sdkconfig files from old
+# checkouts don't keep a stale value and silently skip OTA.
+CONFIG_BT_AGENT_FW_VERSION="0.6.3"
+
+# ===== WiFi Remote (transparent esp_wifi API on P4) =====
+CONFIG_ESP_WIFI_REMOTE_ENABLED=y
+CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y
+CONFIG_ESP_WIFI_REMOTE_EAP_ENABLED=y
+
+# WiFi buffers
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=32
+CONFIG_ESP_WIFI_TX_BUFFER_TYPE=0
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_CACHE_TX_BUFFER_NUM=32
+
+# ===== VESC CAN pins =====
+# Wired on this board: GPIO 48 = TX → SN65HVD230 D, GPIO 47 = RX ← R.
+# The Kconfig defaults (20/24) collide with bt_agent (24) and other BSP
+# pins; pin them explicitly here so a fresh sdkconfig regeneration doesn't
+# silently put us back on the conflicting pins.
+CONFIG_VESC_CAN_TX_GPIO=48
+CONFIG_VESC_CAN_RX_GPIO=47
+
+# Enable LISP stats poll — required for cruise-control indicator, cruise
+# speed text and current-profile (mode) label. The Super_VESC_Display Lisp
+# script (main.lisp) publishes `cruise-active`, `cruise-rpm`, `rpm-per-ms`
+# and `current-profile`; vesc_ui_updater.c::push_cruise_locked() reads them
+# from vesc_lisp_poll and pushes to the dashboard. Off in Kconfig default
+# because not every VESC has a Lisp app loaded; this firmware assumes one.
+CONFIG_VESC_CAN_LISP_POLL_ENABLE=y
+
+# esp_serial_flasher (used by bt_agent_ota): bump retries 3→10. Single-byte
+# UART drops under sustained load occasionally burned through 3 retries;
+# 10 absorbs the jitter without measurably hurting normal throughput.
+CONFIG_SERIAL_FLASHER_WRITE_BLOCK_RETRIES=10
+
+# lwIP — bigger socket count for AA TCP server
+CONFIG_LWIP_MAX_SOCKETS=12
+# Pin TCP/IP task (`tiT`, prio 18) to core 1 — same core as `aa_tcp` recv-loop
+# and `h264_dec`. Without this, every incoming AA video packet bounces from
+# core 0 (where tiT happened to land) to core 1 (where the recv-loop sleeps),
+# burning an IPC per packet at 30 fps. Higher prio than the decoder (8) means
+# tiT still gets to drain the WiFi queue promptly.
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU1=y
+
+# main_task stack must NOT land in the 8KB TCM region on ESP32-P4
+# (esp_ptr_in_dram() rejects TCM, breaking spi_flash_mmap during nvs_flash_init).
+# Bumping past 8KB forces allocation in L2 SRAM.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# ===== Flash + partitions (32MB GD25... on Waveshare 4.3 board) =====
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="32MB"
+# 120 MHz QIO is supported on ESP32-P4 with this Waveshare board's GD25 flash;
+# saves ~150 ms of app-image load time.
+CONFIG_ESPTOOLPY_FLASHFREQ_120M=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+# Flash erase/program suspend stays OFF. This GD25Q256 reports JEDEC id
+# 0xC84019, which is NOT in IDF's GD suspend whitelist (spi_flash_chip_gd.c
+# lists only 0xC84016/17/18 and 0xC84319). With AUTO_SUSPEND=y,
+# esp_flash_suspend_cmd_init() returns NOT_SUPPORTED so the feature never
+# engages — it only spams "Suspend and resume may not supported for this
+# flash model yet" every boot. NVS-erase render stalls are mitigated by
+# debounced/deferred nvs_commit() off the LVGL thread instead.
+CONFIG_SPI_FLASH_AUTO_SUSPEND=n
+
+# ===== Android Auto head unit =====
+# Default role AP: head unit runs SoftAP, phone joins it (production —
+# matches a real wireless head unit). Switch to CONFIG_AA_WIFI_ROLE_STA=y
+# for bench testing on an existing network (creds in main/bench_wifi.h
+# when present, otherwise CONFIG_AA_WIFI_SSID/PASSWORD via menuconfig).
+CONFIG_AA_WIFI_ROLE_AP=y
+
+# ===== C6 slave OTA on boot (firmware embedded in host bin) =====
+CONFIG_C6_OTA_ENABLED=y
+CONFIG_C6_OTA_DISPLAY_PROGRESS=y
+
+# ===== Console UART baud =====
+# 921600 (8x of default 115200) so a single I420 frame dump (~768 KiB base64)
+# blasts out in under 10 seconds when we're debugging the video pipeline.
+# idf.py monitor handles arbitrary bauds via -b 921600 or sdkconfig.
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=921600
+CONFIG_CONSOLE_UART_BAUDRATE=921600
+CONFIG_ESPTOOLPY_MONITOR_BAUD=921600
+
+# ===== Bluetooth (NimBLE host on P4, controller on C6 via ESP-Hosted) =====
+# ESP32-P4 has no radio; the C6 slave acts as HCI controller and the
+# NimBLE host runs here on P4 over a virtual HCI transport. Slave fw
+# must be built with CONFIG_ESP_HOSTED_CP_BT=y (already on by default
+# in tools/c6_slave_fw/sdkconfig.defaults.esp32c6).
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_CONTROLLER_DISABLED=y
+# Default NimBLE transport is UART which doesn't apply when the
+# controller lives on the C6 — disable it so ESP-Hosted's VHCI
+# transport is used instead.
+CONFIG_BT_NIMBLE_TRANSPORT_UART=n
+CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE=y
+CONFIG_ESP_HOSTED_NIMBLE_HCI_VHCI=y
+# NimBLE allocations from PSRAM, not the cramped INTERNAL+8BIT pool.
+# Without this main_task creation crashes with `app_startup.c:86 (res
+# == pdTRUE)` because L2 SRAM no longer has a 16 KiB contiguous chunk
+# after constructors run.
+CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_INTERNAL=n
+CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y
+# Same reasoning for ESP-Hosted's own helper tasks (RPC + default
+# task, 2×5 KiB).
+CONFIG_ESP_HOSTED_DFLT_TASK_FROM_SPIRAM=y
+# Dual-role: we advertise a GATT server (peripheral, for the phone) AND act
+# as a central/GATT-client to connect to an external BLE cadence sensor for
+# the pedal-assist (PAS) feature — scan (OBSERVER) + connect (CENTRAL) +
+# service discovery / subscribe (GATT_CLIENT). The C6 controller is role-
+# agnostic so no slave rebuild is needed. MAX_CONNECTIONS≥2 (phone + sensor).
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=y
+CONFIG_BT_NIMBLE_GATT_CLIENT=y
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=3
+# 512 B ATT MTU (NimBLE's own default is 256). VESC Tool already asks for 512
+# and the companion app now does too, so a ~415 B framed LISP READ reply rides
+# in ONE notification instead of two — one fewer connection event per chunk on
+# a path that is pure round-trip latency. Notifications are chained out of the
+# msys pool, so the block count goes up with the MTU: at 256 B/block a 512 B
+# PDU takes 2-3 blocks, and the stock 12 empty out mid-burst → BLE_HS_ENOMEM,
+# which ble_nus.c can only answer with a 5 ms backoff. Both pools live in
+# PSRAM here (MEM_ALLOC_MODE_EXTERNAL), so the extra 3 KiB is free.
+CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512
+CONFIG_BT_NIMBLE_MSYS_1_BLOCK_COUNT=24
+
+# ===== H.264 SW decoder =====
+# IRAM-resident hot path (~22 KiB) leaves too little internal SRAM heap
+# for the ESP-Hosted SDIO mempool (sdio_drv.c:249 buf_mp_g assert) and
+# the FreeRTOS main-task stack. Retested 2026-05-12 and boot still
+# crashes the same way — keep =n. Decoding from flash is fast enough
+# for our 480p target.
+CONFIG_ESP_H264_DECODER_IRAM=n
+# Dual-task decoder ON, helper pinned to core 0. Profiling showed that
+# big H.264 frames (IDR / scene-change keyframes, ~25 KiB each) take 90-
+# 120 ms to decode single-threaded — the median fps stays at ~13 in idle
+# but bursts collapse to 6-7 fps because of these spikes. With dual-task
+# the helper crunches MBs on core 0 in parallel with the main decoder on
+# core 1, roughly halving the big-frame cost.
+#
+# Why core 0 is OK: LVGL adapter (task_priority=6, no affinity) is the
+# only other significant consumer of core 0 cycles, and it's paused
+# while AA video is active (display_video.c calls esp_lv_adapter_pause
+# on the first frame). In VESC mode the decoder still runs to keep H.264
+# state valid, but the ack throttle in h264_pipe slows the phone to ~5
+# fps — even with the prio-17 helper occasionally preempting LVGL, the
+# 200 ms gap between frames leaves plenty of room.
+CONFIG_ESP_H264_DUAL_TASK=y
+CONFIG_ESP_H264_DUAL_TASK_CORE=0
+CONFIG_ESP_H264_DUAL_TASK_PRIORITY=17
+
+# RTC slow-clock from board's 32.768 kHz crystal (Y2 on GPIO0/1).
+# CAL_CYCLES must be ≥3000 for EXT_CRYS or IDF silently falls back to RC.
+CONFIG_RTC_CLK_SRC_EXT_CRYS=y
+CONFIG_RTC_CLK_CAL_CYCLES=3000
+
+# RTC backup battery (CR2032 / LIR2032 in H8). INIT_AUTO sets up the
+# brownout comparator so esp_vbat_get_battery_state() returns
+# NORMAL/LOWBATTERY relative to the threshold below. We pick the
+# highest available pre-v3 threshold (2.6V) so a fading CR2032 trips
+# LOWBATTERY before it actually fails to hold the RTC domain.
+CONFIG_ESP_VBAT_INIT_AUTO=y
+CONFIG_ESP_VBAT_BROWNOUT_DET_LVL_SEL_7=y
+
+# LVGL image decoder (esp_lv_decoder): registers a global LVGL image
+# decoder that sniffs in-memory PNG/JPEG sources by magic bytes and
+# decodes them via libpng / esp_jpeg. Needed so the notification toast
+# can render the 72×72 PNG app icons the phone pushes over BLE — without
+# it lv_img got raw PNG bytes it couldn't decode and fell back to the
+# blue letter tile. Music album art keeps using its own hardware-JPEG
+# path (cf=TRUE_COLOR, pre-decoded RGB565), which the magic sniffer
+# ignores (10-byte JFIF / 8-byte PNG signatures never collide with raw
+# pixels).
+CONFIG_ESP_LVGL_ADAPTER_ENABLE_DECODER=y
+
+# FAT long filenames on the microSD card. IDF defaults FATFS to 8.3 short
+# names (FATFS_LFN_NONE), so a file like "my recording 2024.mp4" shows up
+# mangled ("MYRECO~1.MP4") and long-named files can't be created — both the
+# on-device file browser and the BLE file manager hit this on /sdcard.
+# Heap-backed LFN buffer (STACK would put ~1 KB on whatever task runs FAT ops
+# and risk the ble_files / files_screen worker stacks); UTF-8 API so non-ASCII
+# (e.g. Cyrillic) names round-trip with the phone, which speaks UTF-8.
+# /vescfs (LittleFS) already supports long names, so this is FAT-only.
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+CONFIG_FATFS_API_ENCODING_UTF_8=y

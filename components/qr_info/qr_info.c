@@ -72,7 +72,7 @@ bool qr_info_get_ota_url(char *out, size_t out_sz)
      * does NOT resolve .local — Android users have to fall back to the IP
      * shown alongside the QR on the idle screen. */
     int n = (port == 80)
-            ? snprintf(out, out_sz, "http://%s.local",    AA_MDNS_HOSTNAME)
-            : snprintf(out, out_sz, "http://%s.local:%d", AA_MDNS_HOSTNAME, port);
+            ? snprintf(out, out_sz, "http://%s.local",    DEVICE_MDNS_HOSTNAME)
+            : snprintf(out, out_sz, "http://%s.local:%d", DEVICE_MDNS_HOSTNAME, port);
     return n > 0 && (size_t)n < out_sz;
 }

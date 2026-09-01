@@ -1,0 +1,22 @@
+# Per-board overlay: Guition JC4880P443C_I_W (16 MB flash).
+#
+# Layered on top of sdkconfig.defaults via scripts/build_board.sh:
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.jc4880"
+# The base file carries Waveshare defaults; the keys below override them.
+#
+# Display panel timing, LCD/I2S/touch GPIOs and the BT-agent UART pins are
+# driven by the CONFIG_BOARD_JC4880P443C #if branches in the BSP and
+# main/bt_link.h — not here.
+CONFIG_BOARD_JC4880P443C=y
+
+# Flash — 16 MB on the JC4880P443C core board (override base 32 MB).
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+
+# Partition table — 16 MB layout (see partitions_16mb.csv).
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_16mb.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions_16mb.csv"
+
+# VESC CAN — pins on the JC free header. "can rx tx — 52 51" => RX=52, TX=51.
+CONFIG_VESC_CAN_TX_GPIO=51
+CONFIG_VESC_CAN_RX_GPIO=52

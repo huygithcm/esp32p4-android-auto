@@ -4,7 +4,6 @@
 #include <stdio.h>
 
 #include "bsp/esp-bsp.h"
-#include "bt_link.h"
 #include "esp_log.h"
 #include "lvgl.h"
 
@@ -13,17 +12,9 @@ static const char *TAG = "idle_screen";
 static lv_obj_t *s_root;
 static lv_obj_t *s_title;
 static lv_obj_t *s_subtitle;
-static lv_obj_t *s_connect_btn;
 static char      s_line1[40];
 static char      s_line2[80];
 static bool      s_initialized;
-
-static void connect_btn_cb(lv_event_t *e)
-{
-    (void)e;
-    ESP_LOGI(TAG, "Connect button tapped — paging paired phone");
-    bt_link_request_connect_now();
-}
 
 esp_err_t idle_screen_init(void)
 {
@@ -53,20 +44,6 @@ esp_err_t idle_screen_init(void)
     s_subtitle = lv_label_create(s_root);
     lv_label_set_text(s_subtitle, "");
     lv_obj_set_style_text_color(s_subtitle, lv_color_hex(0xa0a0a0), 0);
-
-    /* "Connect" button — hidden by default, unhidden once we reach the
-     * "Waiting for phone" state. Sits below the subtitle in the column. */
-    s_connect_btn = lv_btn_create(s_root);
-    lv_obj_set_style_pad_hor(s_connect_btn, 32, 0);
-    lv_obj_set_style_pad_ver(s_connect_btn, 14, 0);
-    lv_obj_set_style_bg_color(s_connect_btn, lv_color_hex(0x1f6feb), 0);
-    lv_obj_set_style_radius(s_connect_btn, 8, 0);
-    lv_obj_add_event_cb(s_connect_btn, connect_btn_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_flag(s_connect_btn, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_t *btn_lbl = lv_label_create(s_connect_btn);
-    lv_label_set_text(btn_lbl, "Connect");
-    lv_obj_set_style_text_color(btn_lbl, lv_color_white(), 0);
-    lv_obj_center(btn_lbl);
 
     bsp_display_unlock();
     s_initialized = true;
@@ -112,21 +89,6 @@ void idle_screen_hide(void)
     }
     if (bsp_display_lock(200) == ESP_OK) {
         lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
-        bsp_display_unlock();
-    }
-}
-
-void idle_screen_set_connect_visible(bool visible)
-{
-    if (!s_initialized) {
-        return;
-    }
-    if (bsp_display_lock(200) == ESP_OK) {
-        if (visible) {
-            lv_obj_clear_flag(s_connect_btn, LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_add_flag(s_connect_btn, LV_OBJ_FLAG_HIDDEN);
-        }
         bsp_display_unlock();
     }
 }

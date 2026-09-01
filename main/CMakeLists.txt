@@ -2,21 +2,12 @@ idf_component_register(
     SRCS
         "main.c"
         "wifi_manager.c"
-        "tcp_server.c"
-        "mdns_advertise.c"
         "display_init.c"
         "idle_screen.c"
         "ota_screen.c"
-        "c6_ota.c"
         "ota_http.c"
         "files_http.c"
         "lisp_http.c"
-        "aa_frame.c"
-        "aa_tls.c"
-        "aa_handshake.c"
-        "aa_proto.c"
-        "aa_service.c"
-        "aa_x509_patch.c"
         "ble_host.c"
         "ble_bms_client.c"
         "ble_cadence_client.c"
@@ -26,25 +17,31 @@ idf_component_register(
         "ble_ota.c"
         "ble_files.c"
         "notif_toast.c"
-        "music_info_view.c"
         "fonts/aabridge_font_24.c"
         "fonts/aabridge_font_32.c"
         "fonts/aabridge_font_38.c"
         "fonts/aabridge_font_48.c"
-        "bt_link.c"
-        "bt_agent_ota.c"
-        "h264_pipe.c"
-        "display_video.c"
-        "aa_overlay.c"
         "touch_input.c"
-        "aa_overclock.c"
-        "ui_mode.c"
         "vesc_ui_updater.c"
         "vesc_sim.c"
-        "vbat_routing.c"
         "files_screen.c"
-        "splash_screen.c"
-        "debug_uart_bridge.c"
+        # ── Not compiled yet: both depend on ESP32-P4-only peripherals ──
+        # splash_screen.c    — driver/ppa.h to pre-rotate the GIF frames, plus
+        #                      driver/jpeg_decode.h. The S3 panels are natively
+        #                      landscape, so the rotation can simply be dropped.
+        # debug_uart_bridge.c— driver/jpeg_encode.h (P4 hardware JPEG encoder).
+        #                      S3 has none: either fall back to the raw RGB565
+        #                      screenshot path this file already has, or link a
+        #                      software encoder.
+        # music_info_view.c  — driver/jpeg_decode.h (P4 hardware JPEG decoder)
+        #                      for the album art the phone pushes over BLE.
+        #                      CONFIG_ESP_LVGL_ADAPTER_ENABLE_DECODER is already
+        #                      on and gives LVGL a software JPEG path; route
+        #                      decode_art_jpeg() through it. Until then main.c's
+        #                      dashboard-theme hook has nothing to attach.
+        # "splash_screen.c"
+        # "debug_uart_bridge.c"
+        # "music_info_view.c"
     INCLUDE_DIRS "."
     REQUIRES
         nvs_flash
@@ -53,26 +50,22 @@ idf_component_register(
         esp_wifi
         esp_hw_support
         hal
-        esp_hosted
         bt
         esp_timer
         esp_partition
         esp_ringbuf
         esp_lcd
         esp_mm
-        esp_driver_ppa
-        esp_driver_jpeg
         lwip
-        mdns
         mbedtls
         driver
         console
         app_update
         esp_http_server
-        c6_ota_partition
-        bt_agent_fw
-        esp32_p4_wifi6_touch_lcd_4_3
-        espressif__esp_h264
+        # bsp_board: per-board display / touch / SD support. Provide one
+        # implementation of the contract in components/bsp_board/README.md;
+        # reference/bsp_p4/ is the ESP32-P4 original, kept for reference only.
+        bsp_board
         espressif__esp_lvgl_adapter
         vesc_ui
         vesc_can
@@ -112,16 +105,3 @@ add_custom_command(
 add_custom_target(lisp_web_gz DEPENDS "${_lisp_web_gz}")
 add_dependencies(${COMPONENT_LIB} lisp_web_gz)
 target_add_binary_data(${COMPONENT_LIB} "${_lisp_web_gz}" BINARY)
-
-# Reroute mbedTLS's UTCTime parser to our offset-tolerant wrapper. Required
-# to load the original aasdk head-unit certificate (whose validity uses
-# `YYMMDDHHMMSS±HHMM` instead of Zulu) — see aa_x509_patch.c.
-#
-#   --wrap=mbedtls_x509_get_time : route every internal call to our wrapper
-#   -u __wrap_mbedtls_x509_get_time : force the symbol undefined up front so
-#       the linker pulls aa_x509_patch.o out of libmain.a — without this it
-#       skips main entirely (nothing else references __wrap_*) and then
-#       libmbedx509.a fails with "undefined reference".
-idf_build_set_property(LINK_OPTIONS "-Wl,--wrap=mbedtls_x509_get_time" APPEND)
-idf_build_set_property(LINK_OPTIONS "-u" APPEND)
-idf_build_set_property(LINK_OPTIONS "__wrap_mbedtls_x509_get_time" APPEND)

@@ -2,8 +2,6 @@
 
 #include <string.h>
 
-#include "esp_hosted.h"
-#include "esp_hosted_misc.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "host/ble_gap.h"
@@ -251,21 +249,12 @@ esp_err_t ble_host_init(void)
      * keeping its WARN/ERROR. Our own logs use TAG "ble_host", unaffected. */
     esp_log_level_set("NimBLE", ESP_LOG_WARN);
 
-    /* SDIO transport to C6 should already be up via c6_ota's
-     * esp_hosted_init/connect_to_slave; calling controller_init/enable
-     * here is the BT-specific bring-up step. */
-    esp_err_t err = esp_hosted_bt_controller_init();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "esp_hosted_bt_controller_init: %s", esp_err_to_name(err));
-        return err;
-    }
-    err = esp_hosted_bt_controller_enable();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "esp_hosted_bt_controller_enable: %s", esp_err_to_name(err));
-        return err;
-    }
-
-    err = nimble_port_init();
+    /* Native controller: on ESP32-S3 / ESP32 nimble_port_init() brings the
+     * BT controller up itself (esp_nimble_init -> HCI transport), so there is
+     * no separate controller_init/enable step. The ESP32-P4 build had to call
+     * esp_hosted_bt_controller_init/enable first because the controller lived
+     * on the C6 behind a virtual HCI. */
+    esp_err_t err = nimble_port_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "nimble_port_init: %s", esp_err_to_name(err));
         return err;

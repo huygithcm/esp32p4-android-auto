@@ -9,7 +9,6 @@
 #include "dev_settings.h"
 #include "esp_log.h"
 #include "lvgl.h"
-#include "ui_mode.h"
 #include "vesc_battery_calc.h"
 #include "vesc_can/vesc_lisp_poll.h"
 #include "vesc_can/vesc_lisp_panel.h"

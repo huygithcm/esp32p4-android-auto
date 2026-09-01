@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(esp32p4_android_auto)
+project(esp32_vesc_display)
 
 # main/lv_conf.h is the single source of truth for LVGL configuration.
 # It must reach every component that does '#include "lv_conf.h"' or
@@ -12,11 +12,13 @@ project(esp32p4_android_auto)
 # generating its own from Kconfig.
 idf_build_set_property(COMPILE_OPTIONS "-I${CMAKE_SOURCE_DIR}/main" APPEND)
 
+# reference/ holds the ESP32-P4 originals (BSP, sdkconfig overlays, partition
+# tables) kept for porting reference only. It must stay OUT of the component
+# search path so the component manager never tries to build the P4 BSP.
+# EXTRA_COMPONENT_DIRS is not set, and reference/ is not components/, so this
+# is a no-op today — the comment is here so nobody "fixes" it by adding it.
+
 # Auto-tag the firmware artifact with PROJECT_VER (read from version.txt).
-# IDF emits build/esp32p4_android_auto.bin; we keep that for `idf.py flash`
-# and additionally drop a versioned twin alongside it so release artifacts
-# don't need manual renaming. POST_BUILD on gen_project_binary fires right
-# after the raw .bin is produced.
 add_custom_command(
     TARGET gen_project_binary POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

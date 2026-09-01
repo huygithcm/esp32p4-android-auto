@@ -1,0 +1,17 @@
+dependencies:
+  # Pulled in publicly so main/ sees these headers through REQUIRES bsp_board.
+  # main/touch_input.c includes esp_lcd_touch.h; main/main.c and
+  # main/display_init.c use the esp_lv_adapter API.
+  espressif/esp_lvgl_adapter:
+    public: true
+    version: "^0.1.*"
+    pre_release: true
+  espressif/esp_lcd_touch:
+    public: true
+    version: "1.*"
+  lvgl/lvgl:
+    public: true
+    version: "~8.3.0"
+  # Add the panel and touch drivers your board actually uses, e.g.
+  #   espressif/esp_lcd_touch_gt911: "^1"
+  #   espressif/esp_lcd_st7701: "*"

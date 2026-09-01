@@ -1,2 +1,0 @@
-# Scratch overlay: UART bridge for device-screen FPS measurement.
-CONFIG_DEBUG_UART_BRIDGE=y
