@@ -366,16 +366,16 @@ static void parse_state(const uint8_t *data, unsigned int len, int32_t ind)
 static void parse_dash(const uint8_t *data, unsigned int len, int32_t ind)
 {
     if (ind + 16 > (int)len) return;            /* need 4 × i32 */
-    int32_t ca = buffer_get_int32(data, &ind);
-    float   cr = buffer_get_float32(data, VLP_SCALE, &ind);
-    int32_t cp = buffer_get_int32(data, &ind);
-    float   rpm = buffer_get_float32(data, VLP_SCALE, &ind);
+    int32_t dir  = buffer_get_int32(data, &ind);
+    int32_t armd = buffer_get_int32(data, &ind);
+    int32_t cp   = buffer_get_int32(data, &ind);
+    float   eff  = buffer_get_float32(data, VLP_SCALE, &ind);
     if (s_lock && xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
-        s_dash.valid           = true;
-        s_dash.cruise_active   = (ca != 0);
-        s_dash.cruise_rpm      = cr;
-        s_dash.current_profile = cp / 1000;     /* sent as profile × 1000 */
-        s_dash.rpm_per_ms      = rpm;
+        s_dash.valid                = true;
+        s_dash.direction_state      = dir / 1000;   /* sent as value × 1000 */
+        s_dash.reverse_armed        = (armd != 0);
+        s_dash.current_profile      = cp / 1000;
+        s_dash.effective_current_dA = eff;
         xSemaphoreGive(s_lock);
     }
 }

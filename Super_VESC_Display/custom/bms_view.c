@@ -28,6 +28,20 @@
 #define COL_WARN     0xFFB020
 #define COL_DANGER   0xFF4055
 
+/* The backend/model follows VESC telemetry: +current means discharge and
+ * -current means charge/regen. The rider-facing BMS gauge deliberately uses
+ * the requested power-flow convention instead: input to the pack is positive,
+ * output from the pack is negative. Keep that translation at this one FE
+ * boundary so the BLE/parser contract is not silently changed. */
+#define BMS_UI_ZERO_CURRENT_MA 5
+#define BMS_UI_IDLE_CURRENT_MA 100
+#define BMS_UI_CELL_COLUMNS    3
+#define BMS_UI_CELL_CARD_W     238
+#define BMS_UI_CELL_CARD_H     52
+#define BMS_UI_CELL_ROW_STEP   60
+#define BMS_UI_CELL_GRID_Y     52
+#define BMS_UI_CELL_SECTION_Y  296
+
 typedef struct {
     lv_obj_t *root;
     lv_obj_t *scroll;
@@ -59,6 +73,10 @@ typedef struct {
     lv_obj_t *unsupported;
     lv_obj_t *mode;
     lv_obj_t *empty;
+    lv_obj_t *cell_section;
+    lv_obj_t *detail_section;
+    lv_obj_t *status_section;
+    lv_obj_t *additional_section;
     lv_obj_t *cell_card[BMS_UI_MAX_CELLS];
     lv_obj_t *cell_num[BMS_UI_MAX_CELLS];
     lv_obj_t *cell_value[BMS_UI_MAX_CELLS];
@@ -353,21 +371,100 @@ static void format_age(char *out, size_t cap, uint32_t age_ms)
     else snprintf(out, cap, "%.1f s", age_ms / 1000.0);
 }
 
+static double display_current_a(int32_t backend_current_ma)
+{
+    /* Convert as double instead of negating the integer, which also avoids an
+     * overflow if a corrupt source ever publishes INT32_MIN. */
+    return -((double)backend_current_ma) / 1000.0;
+}
+
+static double display_power_w(int32_t backend_power_mw)
+{
+    return -((double)backend_power_mw) / 1000.0;
+}
+
+static void format_display_current(char *out, size_t cap, int32_t backend_ma)
+{
+    if (backend_ma > -BMS_UI_ZERO_CURRENT_MA &&
+        backend_ma < BMS_UI_ZERO_CURRENT_MA) {
+        snprintf(out, cap, "0.00A");
+    } else {
+        snprintf(out, cap, "%+.2fA", display_current_a(backend_ma));
+    }
+}
+
+static void format_display_power(char *out, size_t cap, int32_t backend_mw)
+{
+    if (backend_mw > -500 && backend_mw < 500) {
+        snprintf(out, cap, "Power   0 W");
+    } else {
+        snprintf(out, cap, "Power   %+.0f W", display_power_w(backend_mw));
+    }
+}
+
+static uint32_t display_flow_color(int32_t backend_current_ma, bool valid)
+{
+    if (!valid) return COL_DIM;
+    if (backend_current_ma < -BMS_UI_IDLE_CURRENT_MA) return COL_ACCENT;
+    if (backend_current_ma > BMS_UI_IDLE_CURRENT_MA) return COL_WARN;
+    return COL_TEXT;
+}
+
+static void style_gauge_pill(lv_obj_t *label, uint32_t border_color)
+{
+    lv_obj_set_size(label, 132, 27);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_bg_color(label, lv_color_hex(COL_BG), 0);
+    lv_obj_set_style_bg_opa(label, LV_OPA_80, 0);
+    lv_obj_set_style_border_color(label, lv_color_hex(border_color), 0);
+    lv_obj_set_style_border_width(label, 1, 0);
+    lv_obj_set_style_radius(label, 14, 0);
+    lv_obj_set_style_pad_top(label, 3, 0);
+}
+
+static void layout_bms_sections(uint8_t cell_count, bool grid_has_data)
+{
+    if (!s.cell_section || !s.detail_section || !s.status_section ||
+        !s.additional_section) return;
+
+    uint8_t rows = grid_has_data
+                       ? (uint8_t)((cell_count + BMS_UI_CELL_COLUMNS - 1u) /
+                                   BMS_UI_CELL_COLUMNS)
+                       : 1u;
+    uint8_t max_rows = (uint8_t)((BMS_UI_MAX_CELLS + BMS_UI_CELL_COLUMNS - 1u) /
+                                 BMS_UI_CELL_COLUMNS);
+    if (rows < 1u) rows = 1u;
+    if (rows > max_rows) rows = max_rows;
+
+    int cell_height = 54 + rows * BMS_UI_CELL_ROW_STEP;
+    int details_y = BMS_UI_CELL_SECTION_Y + cell_height + 8;
+    int status_y = details_y + 176 + 8;
+    int additional_y = status_y + 126 + 8;
+
+    lv_obj_set_height(s.cell_section, cell_height);
+    lv_obj_set_y(s.detail_section, details_y);
+    lv_obj_set_y(s.status_section, status_y);
+    lv_obj_set_y(s.additional_section, additional_y);
+}
+
 static void mode_changed_cb(lv_event_t *event)
 {
     lv_obj_t *matrix = lv_event_get_target(event);
     uint16_t selected = lv_btnmatrix_get_selected_btn(matrix);
     if (selected == LV_BTNMATRIX_BTN_NONE) return;
     s.show_wire = selected == 1;
+    if (s.scroll)
+        lv_obj_scroll_to_y(s.scroll, BMS_UI_CELL_SECTION_Y, LV_ANIM_OFF);
+    if (s.timer) lv_timer_ready(s.timer);
 }
 
 static void set_cell_card(uint8_t index, const bms_ui_snapshot_t *d,
-                          bool cells_valid, bool wire_valid)
+                          bool cells_valid, bool wire_valid,
+                          bool grid_has_data)
 {
     lv_obj_t *card = s.cell_card[index];
     if (!card) return;
-    if (index >= d->cell_count || index >= BMS_UI_MAX_CELLS ||
-        (s.show_wire && !wire_valid)) {
+    if (index >= d->cell_count || index >= BMS_UI_MAX_CELLS || !grid_has_data) {
         lv_obj_add_flag(card, LV_OBJ_FLAG_HIDDEN);
         return;
     }
@@ -397,7 +494,7 @@ static void set_cell_card(uint8_t index, const bms_ui_snapshot_t *d,
     }
     lv_obj_set_style_text_color(s.cell_value[index], lv_color_hex(color), 0);
     lv_obj_set_style_border_color(card, lv_color_hex(color), 0);
-    lv_obj_set_style_border_width(card, valid ? 1 : 0, 0);
+    lv_obj_set_style_border_width(card, valid ? 2 : 0, 0);
 }
 
 static void render_snapshot(const bms_ui_snapshot_t *d, bool available)
@@ -440,22 +537,50 @@ static void render_snapshot(const bms_ui_snapshot_t *d, bool available)
     lv_obj_set_style_arc_color(s.soc_arc, lv_color_hex(state_color), LV_PART_INDICATOR);
 
     if (valid & BMS_UI_VALID_PACK_VOLTAGE)
-        snprintf(text, sizeof text, "Pack   %.2f V", d->pack_mv / 1000.0);
-    else snprintf(text, sizeof text, "Pack   --");
+        snprintf(text, sizeof text, "%.2fV", d->pack_mv / 1000.0);
+    else snprintf(text, sizeof text, "--V");
     lv_label_set_text(s.pack, text);
+    lv_obj_set_style_text_color(s.pack,
+        lv_color_hex((valid & BMS_UI_VALID_PACK_VOLTAGE) ? COL_TEXT : COL_DIM), 0);
 
-    if (valid & BMS_UI_VALID_PACK_CURRENT)
-        snprintf(text, sizeof text, "Current   %+.2f A", d->pack_current_ma / 1000.0);
-    else snprintf(text, sizeof text, "Current   --");
+    bool current_valid = (valid & BMS_UI_VALID_PACK_CURRENT) != 0;
+    uint32_t flow_color = display_flow_color(d->pack_current_ma, current_valid);
+    if (current_valid)
+        format_display_current(text, sizeof text, d->pack_current_ma);
+    else snprintf(text, sizeof text, "--A");
     lv_label_set_text(s.current, text);
+    lv_obj_set_style_text_color(s.current, lv_color_hex(flow_color), 0);
+    lv_obj_set_style_border_color(s.current, lv_color_hex(flow_color), 0);
 
     if (valid & BMS_UI_VALID_POWER)
-        snprintf(text, sizeof text, "Power   %+.0f W", d->power_mw / 1000.0);
+        format_display_power(text, sizeof text, d->power_mw);
     else snprintf(text, sizeof text, "Power   --");
     lv_label_set_text(s.power, text);
+    lv_obj_set_style_text_color(s.power,
+        lv_color_hex((valid & BMS_UI_VALID_POWER) ? flow_color : COL_DIM), 0);
 
-    if (valid & BMS_UI_VALID_CELLS) {
-        snprintf(text, sizeof text, "Cells  %u   Min %.3f   Max %.3f   Delta %u mV",
+    if (s.show_wire) {
+        if (valid & BMS_UI_VALID_WIRE_RES) {
+            uint8_t count = 0;
+            uint16_t min_mohm = UINT16_MAX;
+            uint16_t max_mohm = 0;
+            for (uint8_t i = 0; i < d->cell_count && i < BMS_UI_MAX_CELLS; ++i) {
+                if (!(d->wire_res_valid_mask & (1u << i))) continue;
+                uint16_t value = d->wire_res_mohm[i];
+                if (value < min_mohm) min_mohm = value;
+                if (value > max_mohm) max_mohm = value;
+                count++;
+            }
+            if (count) {
+                snprintf(text, sizeof text,
+                         "Wires %u | %.3f-%.3f R",
+                         (unsigned)count, min_mohm / 1000.0, max_mohm / 1000.0);
+            } else {
+                snprintf(text, sizeof text, "Balance wires --");
+            }
+        } else snprintf(text, sizeof text, "Balance wires --");
+    } else if (valid & BMS_UI_VALID_CELLS) {
+        snprintf(text, sizeof text, "Cells %u | %.3f-%.3f V | d%u mV",
                  (unsigned)d->cell_count, d->cell_min_mv / 1000.0,
                  d->cell_max_mv / 1000.0, (unsigned)d->cell_delta_mv);
     } else snprintf(text, sizeof text, "Cells  --");
@@ -572,8 +697,10 @@ static void render_snapshot(const bms_ui_snapshot_t *d, bool available)
 
     const char *flow = "--";
     if (valid & BMS_UI_VALID_PACK_CURRENT) {
-        if (d->pack_current_ma > 100) flow = "DISCHARGE";
-        else if (d->pack_current_ma < -100) flow = "CHARGE / REGEN";
+        if (d->pack_current_ma > BMS_UI_IDLE_CURRENT_MA)
+            flow = "DISCHARGE / OUTPUT (-)";
+        else if (d->pack_current_ma < -BMS_UI_IDLE_CURRENT_MA)
+            flow = "CHARGE / INPUT (+)";
         else flow = "IDLE";
     }
     char balance_info[48], heater_info[64];
@@ -633,14 +760,24 @@ static void render_snapshot(const bms_ui_snapshot_t *d, bool available)
 
     bool cells_valid = (valid & BMS_UI_VALID_CELLS) != 0;
     bool wire_valid = (valid & BMS_UI_VALID_WIRE_RES) != 0;
-    bool grid_has_data = s.show_wire ? (wire_valid && d->wire_res_valid_mask != 0)
-                                     : (cells_valid && d->cell_valid_mask != 0);
+    uint8_t safe_cell_count = d->cell_count < BMS_UI_MAX_CELLS
+                                  ? d->cell_count : BMS_UI_MAX_CELLS;
+    uint32_t count_mask = safe_cell_count == BMS_UI_MAX_CELLS
+                              ? UINT32_MAX
+                              : (safe_cell_count ? ((1u << safe_cell_count) - 1u) : 0u);
+    bool grid_has_data = safe_cell_count > 0 &&
+                         (s.show_wire
+                              ? (wire_valid && (d->wire_res_valid_mask & count_mask) != 0)
+                              : (cells_valid && (d->cell_valid_mask & count_mask) != 0));
+    uint8_t grid_cell_count = grid_has_data ? safe_cell_count : 0;
+    if (!grid_has_data) grid_cell_count = 0;
+    layout_bms_sections(grid_cell_count, grid_has_data);
     if (grid_has_data) lv_obj_add_flag(s.empty, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_clear_flag(s.empty, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(s.empty, s.show_wire ? "No balance-wire data" : "No cell data");
 
     for (uint8_t i = 0; i < BMS_UI_MAX_CELLS; ++i)
-        set_cell_card(i, d, cells_valid, wire_valid);
+        set_cell_card(i, d, cells_valid, wire_valid, grid_has_data);
 }
 
 #ifdef LV_REALDEVICE
@@ -937,118 +1074,139 @@ void bms_view_create(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(s.scroll, LV_OPA_70, LV_PART_SCROLLBAR);
     lv_obj_set_style_width(s.scroll, 5, LV_PART_SCROLLBAR);
 
-    lv_obj_t *left = panel_create(s.scroll, 4, 0, 218, 288);
-    s.soc_arc = lv_arc_create(left);
-    lv_obj_set_pos(s.soc_arc, 44, 8);
-    lv_obj_set_size(s.soc_arc, 130, 130);
+    lv_obj_t *overview = panel_create(s.scroll, 4, 0, 748, 288);
+    s.soc_arc = lv_arc_create(overview);
+    lv_obj_set_pos(s.soc_arc, 18, 4);
+    lv_obj_set_size(s.soc_arc, 182, 182);
     lv_arc_set_range(s.soc_arc, 0, 1000);
     lv_arc_set_rotation(s.soc_arc, 135);
     lv_arc_set_bg_angles(s.soc_arc, 0, 270);
     lv_obj_remove_style(s.soc_arc, NULL, LV_PART_KNOB);
     lv_obj_clear_flag(s.soc_arc, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_arc_width(s.soc_arc, 10, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(s.soc_arc, 10, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(s.soc_arc, 11, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(s.soc_arc, 11, LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(s.soc_arc, lv_color_hex(COL_BTN), LV_PART_MAIN);
     lv_obj_set_style_arc_color(s.soc_arc, lv_color_hex(COL_ACCENT), LV_PART_INDICATOR);
 
-    s.soc = label_at(left, "--%", 0, 52, &lv_font_montserratMedium_26, COL_TEXT);
+    s.soc = label_at(overview, "--%", 0, 43, &lv_font_montserratMedium_26, COL_TEXT);
     lv_obj_set_width(s.soc, 218);
     lv_obj_set_style_text_align(s.soc, LV_TEXT_ALIGN_CENTER, 0);
-    s.pack = label_at(left, "Pack   --", 16, 139, &lv_font_montserratMedium_16, COL_TEXT);
-    s.current = label_at(left, "Current   --", 16, 162,
+    s.pack = label_at(overview, "--V", 43, 88, &lv_font_montserratMedium_16, COL_TEXT);
+    style_gauge_pill(s.pack, COL_CYAN);
+    s.current = label_at(overview, "--A", 43, 119,
                          &lv_font_montserratMedium_16, COL_TEXT);
-    s.power = label_at(left, "Power   --", 16, 185, &lv_font_montserratMedium_16, COL_TEXT);
-    s.thermal = label_at(left, "Battery --   MOS --", 16, 214,
-                         &lv_font_montserratMedium_12, COL_DIM);
-    s.health = label_at(left, "SOH --   Cycles --", 16, 234,
-                        &lv_font_montserratMedium_12, COL_DIM);
-    s.switches = label_at(left, "CHG -- | DSG -- | BAL --", 16, 254,
-                          &lv_font_montserratMedium_12, COL_DIM);
+    style_gauge_pill(s.current, COL_DIM);
+    label_at(overview, "PACK OVERVIEW", 236, 14,
+             &lv_font_montserratMedium_16, COL_ACCENT);
+    s.power = label_at(overview, "Power   --", 236, 48,
+                       &lv_font_montserratMedium_20, COL_TEXT);
+    s.thermal = label_at(overview, "Battery --   MOS --", 236, 92,
+                         &lv_font_montserratMedium_16, COL_DIM);
+    s.health = label_at(overview, "SOH --   Cycles --", 236, 130,
+                        &lv_font_montserratMedium_16, COL_DIM);
+    s.switches = label_at(overview, "CHG -- | DSG -- | BAL --", 236, 168,
+                          &lv_font_montserratMedium_16, COL_DIM);
+    label_at(overview, "Scroll for large cell and balance-wire cards", 236, 218,
+             &lv_font_montserratMedium_12, COL_DIM);
 
-    lv_obj_t *right = panel_create(s.scroll, 226, 0, 526, 288);
+    s.cell_section = panel_create(s.scroll, 4, BMS_UI_CELL_SECTION_Y, 748, 286);
+    label_at(s.cell_section, "CELL DATA", 12, 15,
+             &lv_font_montserratMedium_16, COL_ACCENT);
     static const char *mode_map[] = { "CELLS", "WIRE", "" };
-    s.mode = lv_btnmatrix_create(right);
+    s.mode = lv_btnmatrix_create(s.cell_section);
     lv_btnmatrix_set_map(s.mode, mode_map);
     lv_btnmatrix_set_one_checked(s.mode, true);
     lv_btnmatrix_set_btn_ctrl(s.mode, 0, LV_BTNMATRIX_CTRL_CHECKED);
-    lv_obj_set_pos(s.mode, 8, 7);
-    lv_obj_set_size(s.mode, 174, 30);
+    lv_obj_set_pos(s.mode, 116, 7);
+    lv_obj_set_size(s.mode, 220, 38);
     lv_obj_set_style_bg_color(s.mode, lv_color_hex(COL_BTN), LV_PART_MAIN);
     lv_obj_set_style_bg_color(s.mode, lv_color_hex(COL_CARD), LV_PART_ITEMS);
     lv_obj_set_style_bg_color(s.mode, lv_color_hex(COL_CYAN),
                               LV_PART_ITEMS | LV_STATE_CHECKED);
     lv_obj_set_style_text_color(s.mode, lv_color_hex(COL_TEXT), LV_PART_ITEMS);
-    lv_obj_set_style_text_font(s.mode, &lv_font_montserratMedium_12, LV_PART_ITEMS);
+    lv_obj_set_style_text_font(s.mode, &lv_font_montserratMedium_16, LV_PART_ITEMS);
     lv_obj_set_style_border_width(s.mode, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(s.mode, 0, LV_PART_ITEMS);
     lv_obj_add_event_cb(s.mode, mode_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
-    s.cell_summary = label_at(right, "Cells  --", 190, 14,
-                              &lv_font_montserratMedium_12, COL_DIM);
-    lv_obj_set_width(s.cell_summary, 325);
+    s.cell_summary = label_at(s.cell_section, "Cells  --", 346, 17,
+                               &lv_font_montserratMedium_16, COL_DIM);
+    lv_obj_set_size(s.cell_summary, 390, 22);
+    lv_label_set_long_mode(s.cell_summary, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(s.cell_summary, LV_TEXT_ALIGN_RIGHT, 0);
 
     for (uint8_t i = 0; i < BMS_UI_MAX_CELLS; ++i) {
-        int col = i % 4;
-        int row = i / 4;
-        lv_obj_t *card = lv_obj_create(right);
-        lv_obj_set_pos(card, 8 + col * 127, 43 + row * 30);
-        lv_obj_set_size(card, 119, 26);
+        int col = i % BMS_UI_CELL_COLUMNS;
+        int row = i / BMS_UI_CELL_COLUMNS;
+        lv_obj_t *card = lv_obj_create(s.cell_section);
+        lv_obj_set_pos(card, 8 + col * 246,
+                       BMS_UI_CELL_GRID_Y + row * BMS_UI_CELL_ROW_STEP);
+        lv_obj_set_size(card, BMS_UI_CELL_CARD_W, BMS_UI_CELL_CARD_H);
         lv_obj_set_style_bg_color(card, lv_color_hex(COL_CARD), 0);
         lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(card, 0, 0);
-        lv_obj_set_style_radius(card, 5, 0);
+        lv_obj_set_style_radius(card, 10, 0);
         lv_obj_set_style_pad_all(card, 0, 0);
         lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
         s.cell_card[i] = card;
-        s.cell_num[i] = label_at(card, "--", 5, 5, &lv_font_montserratMedium_12, COL_DIM);
-        s.cell_value[i] = label_at(card, "--", 31, 5,
-                                   &lv_font_montserratMedium_12, COL_TEXT);
-        lv_obj_set_width(s.cell_value[i], 83);
+        s.cell_num[i] = label_at(card, "--", 6, 6,
+                                 &lv_font_montserratMedium_24, COL_TEXT);
+        lv_obj_set_size(s.cell_num[i], 44, 40);
+        lv_obj_set_style_text_align(s.cell_num[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_bg_color(s.cell_num[i], lv_color_hex(COL_BTN), 0);
+        lv_obj_set_style_bg_opa(s.cell_num[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_border_color(s.cell_num[i], lv_color_hex(COL_CYAN), 0);
+        lv_obj_set_style_border_width(s.cell_num[i], 1, 0);
+        lv_obj_set_style_radius(s.cell_num[i], 20, 0);
+        lv_obj_set_style_pad_top(s.cell_num[i], 6, 0);
+        s.cell_value[i] = label_at(card, "--", 60, 13,
+                                   &lv_font_montserratMedium_24, COL_TEXT);
+        lv_obj_set_width(s.cell_value[i], 166);
         lv_obj_set_style_text_align(s.cell_value[i], LV_TEXT_ALIGN_RIGHT, 0);
         lv_obj_add_flag(card, LV_OBJ_FLAG_HIDDEN);
     }
 
-    s.empty = label_at(right, "No cell data", 0, 145,
-                       &lv_font_montserratMedium_16, COL_DIM);
-    lv_obj_set_width(s.empty, 526);
+    s.empty = label_at(s.cell_section, "No cell data", 0, 75,
+                        &lv_font_montserratMedium_20, COL_DIM);
+    lv_obj_set_width(s.empty, 748);
     lv_obj_set_style_text_align(s.empty, LV_TEXT_ALIGN_CENTER, 0);
 
-    lv_obj_t *details = panel_create(s.scroll, 4, 296, 748, 176);
-    label_at(details, "PACK DETAILS", 12, 9,
+    s.detail_section = panel_create(s.scroll, 4, 0, 748, 176);
+    label_at(s.detail_section, "PACK DETAILS", 12, 9,
              &lv_font_montserratMedium_16, COL_ACCENT);
-    s.detail_pack = label_at(details, "Cell average --\nCapacity --\nRemaining --\nUsed capacity --",
-                             16, 36, &lv_font_montserratMedium_12, COL_TEXT);
+    s.detail_pack = label_at(s.detail_section, "Cell average --\nCapacity --\nRemaining --\nUsed capacity --",
+                              16, 36, &lv_font_montserratMedium_12, COL_TEXT);
     lv_obj_set_width(s.detail_pack, 330);
     lv_obj_set_style_text_line_space(s.detail_pack, 7, 0);
-    s.detail_temp = label_at(details, "T1 --     T2 --\nMOS --\nCycles --     Delta --",
-                             390, 36, &lv_font_montserratMedium_12, COL_TEXT);
+    s.detail_temp = label_at(s.detail_section, "T1 --     T2 --\nMOS --\nCycles --     Delta --",
+                              390, 36, &lv_font_montserratMedium_12, COL_TEXT);
     lv_obj_set_width(s.detail_temp, 340);
     lv_obj_set_style_text_line_space(s.detail_temp, 7, 0);
 
-    lv_obj_t *status = panel_create(s.scroll, 4, 480, 748, 126);
-    label_at(status, "BMS STATUS", 12, 9,
+    s.status_section = panel_create(s.scroll, 4, 0, 748, 126);
+    label_at(s.status_section, "BMS STATUS", 12, 9,
              &lv_font_montserratMedium_16, COL_ACCENT);
-    s.detail_state = label_at(status,
-                              "Power flow: --\nCharge MOS -- | Discharge MOS -- | Balancer --",
+    s.detail_state = label_at(s.status_section,
+                               "Power flow: --\nCharge MOS -- | Discharge MOS -- | Balancer --",
                               16, 35, &lv_font_montserratMedium_12, COL_TEXT);
     lv_obj_set_width(s.detail_state, 716);
     lv_obj_set_style_text_line_space(s.detail_state, 5, 0);
-    s.alarm = label_at(status, "Not paired", 16, 99,
-                       &lv_font_montserratMedium_12, COL_DIM);
+    s.alarm = label_at(s.status_section, "Not paired", 16, 99,
+                        &lv_font_montserratMedium_12, COL_DIM);
     lv_obj_set_width(s.alarm, 716);
     lv_obj_set_style_text_align(s.alarm, LV_TEXT_ALIGN_CENTER, 0);
 
-    lv_obj_t *unsupported = panel_create(s.scroll, 4, 614, 748, 82);
-    label_at(unsupported, "ADDITIONAL JK DATA", 12, 9,
+    s.additional_section = panel_create(s.scroll, 4, 0, 748, 82);
+    label_at(s.additional_section, "ADDITIONAL JK DATA", 12, 9,
              &lv_font_montserratMedium_16, COL_ACCENT);
-    s.unsupported = label_at(unsupported,
+    s.unsupported = label_at(s.additional_section,
         "Unavailable: wire resistance, balance current, cycle capacity, "
         "heater/current, emergency/sleep timers and detail log.",
         16, 36, &lv_font_montserratMedium_11, COL_DIM);
     lv_obj_set_width(s.unsupported, 716);
     lv_label_set_long_mode(s.unsupported, LV_LABEL_LONG_WRAP);
 
+    layout_bms_sections(0, false);
     s.timer = lv_timer_create(update_cb, 500, NULL);
     update_cb(s.timer);
 }

@@ -98,10 +98,12 @@ typedef struct {
  * fixed layout and no such limit. Decoded from the on-wire i32 (×1000) values. */
 typedef struct {
     bool  valid;            /* false until the first DASH reply has arrived */
-    bool  cruise_active;
-    float cruise_rpm;
+    /* Direction the Lisp arbiter is currently allowing: 1 forward, 0
+     * interlock/coast, -1 reverse. */
+    int   direction_state;
+    bool  reverse_armed;    /* brake-hold done; the next throttle goes backwards */
     int   current_profile;
-    float rpm_per_ms;
+    float effective_current_dA;  /* the active mode after the ESC clamp */
 } vlp_dash_t;
 
 /* target_vesc_id = the VESC node running the master LISP script. The reply

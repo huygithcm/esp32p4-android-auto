@@ -298,11 +298,13 @@ void aa_overlay_draw(uint16_t *fb)
         int b = (int)(pct + 0.5f);
         batt = b < 0 ? 0u : (b > 99 ? 99u : (unsigned)b);
     }
-    /* Cruise indicator — from the Lisp DASH packet (its own pump), so it may
-     * report CC active even if the RT poll just gapped a frame. */
+    /* This slot used to carry the cruise indicator. Cruise is gone from the
+     * Lisp script, and the overlay is a driving aid over Android Auto video,
+     * so it now warns about reverse instead -- the one state where what the
+     * throttle does is not what the rider expects. */
     vlp_dash_t dash;
     if (vesc_lisp_panel_get_dash(&dash)) {
-        cc_active = dash.cruise_active;
+        cc_active = dash.reverse_armed || dash.direction_state != 1;
     }
 
     char speed_buf[8];

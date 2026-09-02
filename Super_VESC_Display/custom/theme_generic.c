@@ -407,7 +407,11 @@ static void g_mode_text(uint8_t mode)
     if (lv_obj_has_flag(s_w->mode_text, LV_OBJ_FLAG_HIDDEN))
         lv_obj_clear_flag(s_w->mode_text, LV_OBJ_FLAG_HIDDEN);   /* re-show after no-Lisp */
     char text[16];
-    snprintf(text, sizeof(text), "MODE %d", mode + 1);
+    if (mode == DASH_MODE_REVERSE) {
+        snprintf(text, sizeof(text), "MODE R");
+    } else {
+        snprintf(text, sizeof(text), "MODE %d", mode + 1);
+    }
     dash_label_set(s_w->mode_text, text);
 }
 

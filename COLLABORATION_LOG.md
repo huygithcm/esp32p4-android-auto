@@ -28,6 +28,46 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-30 16:55 +07:00 - Claude - Reverse state reaches the main dashboard; fixed a DASH bug I had just made
+- Scope: user asked whether the UI shows the arm state, then asked for R on the
+  main mode pill. Answering the first question turned up a bug from `ae4f9ae`.
+- The bug I made: `panel-send-dash` still sent `rpm-per-ms`, a variable that
+  commit had deleted along with cruise. DASH is polled at 5 Hz, so the panel
+  event thread would have thrown on the first request and died -- taking the
+  quick panel, the ride-mode protocol and the dashboard's mode label with it,
+  while the motor arbiter carried on. My "undefined calls" check missed it
+  because `rpm-per-ms` is a variable read, not a call.
+- The second half of the same mistake: `ae4f9ae` repurposed two DASH slots to
+  carry requested/effective current while `vesc_ui_updater.c` still read them
+  as `cruise_active`/`cruise_rpm`. The dashboard would have shown cruise
+  permanently engaged and computed a speed from a current.
+- Fixed both by making DASH carry what the dashboard now actually needs:
+  direction_state, reverse_armed, profile, effective current. `vlp_dash_t`
+  renamed to match rather than left with cruise names holding other data.
+- Answering the question: reverse state was only on the Ride Modes screen's
+  Reverse tab -- three readouts, invisible from anywhere else. Nothing outside
+  that editor read the status at all, so a rider could arm reverse, look away,
+  and twist the throttle with no indication on the screen in front of them.
+- Now: the dashboard mode pill reads `MODE R` when armed OR when direction is
+  not forward. A sentinel (`DASH_MODE_REVERSE`) through the existing theme op
+  rather than a new widget, because the states are mutually exclusive -- you
+  cannot be in Mode 2 and reversing -- and both themes handle it. The Android
+  Auto overlay's old cruise indicator now shows the same thing, so the warning
+  survives with video on screen.
+- Files: `lisp/main.lisp`, `components/vesc_can/include/vesc_can/vesc_lisp_panel.h`,
+  `components/vesc_can/vesc_lisp_panel.c`, `main/vesc_ui_updater.c`,
+  `main/aa_overlay.c`, `Super_VESC_Display/custom/dashboard_theme.h`,
+  `theme_generic.c`, `custom.c`, `custom.h`, `docs/RIDE_MODE_V2_BRINGUP.md`.
+- Checks: ride-mode host test 13 groups PASS; Lisp balance PASS and no
+  reference to any deleted variable; firmware build exit 0, app 0x439d00
+  (15% free); merged.bin regenerated 0x459d00.
+- Status: complete
+- Handoff: bench case 4 now has a second pass criterion -- the dashboard pill
+  must change to `MODE R` at the same moment the Reverse tab says ARMED. If it
+  does not, the DASH packet is not arriving and the likely cause is the panel
+  thread having died, which the dashboard hides by continuing to show stale
+  values.
+
 ### 2026-08-30 12:40 +07:00 - Claude - Ride modes v2: absolute amperes, cruise removed, reverse on RX
 - Scope: user asked for both halves, so the shared header stopped being a
   coordination problem and I implemented BE and FE together. This is

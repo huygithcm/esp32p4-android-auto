@@ -80,6 +80,14 @@ static inline void dash_set_text_color(lv_obj_t *obj, lv_color_t c, lv_style_sel
 /* Render operations — same canonical values the data feed produces. Every hook
  * is optional: a NULL slot means "this theme doesn't show that field" and the
  * dispatcher silently skips it. */
+/* Sentinel mode value for the mode_text op: the bike is armed for reverse or
+ * already in it, so the pill reads R instead of a number. A sentinel rather
+ * than a second widget because the two states are mutually exclusive -- you
+ * cannot be in Mode 2 and reversing -- and because the rider should look at
+ * exactly one place to know what the throttle is about to do. Every theme's
+ * mode_text must handle it. */
+#define DASH_MODE_REVERSE 0xFFu
+
 typedef struct {
     void (*speed)(float kmh);
     void (*current)(float a);
@@ -104,6 +112,7 @@ typedef struct {
     void (*cur_time_hm)(int hour, int minute);
     void (*hide_cur_time)(void);
     void (*hide_mode_text)(void);   /* hide the ride-mode label (no Lisp data) */
+
     void (*navigation_icon)(const uint8_t *img_data, uint32_t data_size,
                             uint16_t width, uint16_t height, lv_img_cf_t cf);
     void (*navigation_text)(const char *text);

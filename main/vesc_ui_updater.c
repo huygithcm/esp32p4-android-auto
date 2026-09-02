@@ -167,16 +167,20 @@ static void push_cruise_locked(void)
         return;
     }
 
-    /* Current ride profile (eco / normal / sport, …) → label. */
-    update_mode_text((uint8_t)d.current_profile);
-
-    update_cruise_control_status(d.cruise_active);
-
-    /* Speed text only matters when CC is engaged. speed_kmh = rpm / rpm-per-ms
-     * * 3.6; rpm-per-ms is computed on the VESC (motor poles / wheel diameter). */
-    if (d.cruise_active && d.rpm_per_ms > 0.1f) {
-        update_cruise_speed(d.cruise_rpm / d.rpm_per_ms * 3.6f);
+    /* The mode pill doubles as the reverse warning. Armed OR already
+     * reversing both show R: from the rider's point of view they are the same
+     * situation -- the next twist of the throttle goes backwards -- and that
+     * has to be visible on the screen they are already looking at, not on a
+     * settings tab they would have to go find. */
+    if (d.reverse_armed || d.direction_state != 1) {
+        update_mode_text(DASH_MODE_REVERSE);
+    } else {
+        update_mode_text((uint8_t)d.current_profile);
     }
+
+    /* Cruise control no longer exists in the Lisp script, so its indicator is
+     * held off rather than left showing whatever the last frame said. */
+    update_cruise_control_status(false);
 }
 
 /* Runs inside lv_timer_handler() with the LVGL lock already held — zero

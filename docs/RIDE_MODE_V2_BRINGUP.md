@@ -147,7 +147,7 @@ từng hỏng.
 | 1 | Boot với RX **nhả** | Mode 1 được áp, `R button: released` |
 | 2 | Boot với RX **giữ / chập GND** | **Không arm.** `R button: PRESSED` nhưng `safe`. Nhả ra rồi mới arm được |
 | 3 | Quay bánh tiến bằng ga, rồi nhấn RX | **Không có dòng âm.** Mô-men bị cắt, xe trôi tự do |
-| 4 | Dừng, nhả ga, giữ RX, bóp phanh ≥ 200 ms | `ARMED` |
+| 4 | Dừng, nhả ga, giữ RX, bóp phanh ≥ 200 ms | `ARMED`, **và pill mode trên dashboard đổi thành `MODE R`** |
 | 4b | Giữ **cả ga lẫn phanh** 200 ms | **Không arm.** Đây là lỗ hổng đã sửa |
 | 5 | Giữ RX, nhả phanh, tăng ga từ từ | Bánh quay **lùi**, dòng ≤ giá trị đã đặt |
 | 6 | Đang lùi thì **bóp phanh** | Dòng lùi **ramp về 0**, vẫn giữ arm. Nhả phanh thì lùi tiếp |
@@ -158,6 +158,26 @@ từng hỏng.
 
 **Chỉ hạ xe xuống đất sau khi cả mười ca đạt.** Ra đường bắt đầu ở 3 km/h và
 7 A.
+
+---
+
+---
+
+## Chỉ báo lùi trên màn hình chính
+
+Không phải chỉ tab Reverse mới thấy. Pill mode trên dashboard chính đổi thành
+**`MODE R`** ngay khi reverse được arm **hoặc** khi hướng khác "tiến" — hai
+trạng thái đó với người lái là một: cú vặn ga tiếp theo sẽ đi lùi.
+
+Overlay trên nền video Android Auto cũng dùng đúng tín hiệu đó, nên chỉ báo
+không biến mất khi đang chiếu điện thoại.
+
+Tab Reverse vẫn có ba dòng chi tiết hơn cho lúc bench: `R button`,
+`Interlock`, `Direction`.
+
+**Nếu pill không đổi thành `MODE R` khi đã `ARMED`:** gói DASH không tới nơi.
+Kiểm tra script Lisp còn sống không — `panel-send-dash` chạy trên thread panel,
+và một lỗi ở đó giết thread mà dashboard vẫn hiện số cũ.
 
 ---
 

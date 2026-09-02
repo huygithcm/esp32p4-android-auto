@@ -340,13 +340,16 @@
 (defun panel-send-dash (reply-id) {
     (setq pi 0)
     (pu8 0x56) (pu8 0x50) (pu8 0x84)
-    ; Cruise is gone; these two slots keep their positions so the P4's dash
-    ; parser and every older display keep working, and now carry the ride
-    ; mode's requested and effective current in dA instead.
-    (pi32 (* (rm-amps-of current-profile) 1000))
-    (pi32 (* (rm-effective-dA) 1000))
+    ; Cruise is gone. The four slots keep their positions and widths so the
+    ; packet stays a fixed 4 x i32, but they carry what the dashboard actually
+    ; needs now: which way the bike is allowed to go, and whether reverse is
+    ; armed. The rider has to be able to see that without opening a settings
+    ; screen -- an armed bike that looks idle is how someone twists the
+    ; throttle and goes backwards.
+    (pi32 (* rv-dir 1000))
+    (pi32 (* rv-armed 1000))
     (pi32 (* current-profile 1000))
-    (pi32 (* rpm-per-ms 1000.0))
+    (pi32 (* (rm-effective-dA) 1000))
     (send-data pbuf 2 reply-id)
 })
 ; Master enable is just a flag now — the motor arbiter owns all output and
