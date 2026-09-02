@@ -26,23 +26,17 @@ bool vesc_ride_mode_config_in_range(const vesc_ride_config_t *cfg,
         return false;
     }
 
+    /* No ordering rule in format 2: the modes are independent limits, so
+     * 90/40/70 A is a deliberate choice rather than a mistake. Only the entry
+     * range applies, and it is not tied to the ESC -- a figure above what this
+     * ESC allows is legal to store and clamps when applied, which is what lets
+     * a later Motor Current Max increase take effect on its own. */
     for (unsigned i = 0; i < VESC_RIDE_MODE_COUNT; i++) {
-        if (cfg->speed_dkmh[i] < VESC_RIDE_FORWARD_SPEED_MIN_DKMH ||
-            cfg->speed_dkmh[i] > VESC_RIDE_FORWARD_SPEED_MAX_DKMH ||
-            cfg->current_permille[i] < VESC_RIDE_FORWARD_CURRENT_MIN_PM ||
-            cfg->current_permille[i] > VESC_RIDE_FORWARD_CURRENT_MAX_PM) {
+        if (cfg->mode_current_dA[i] < VESC_RIDE_CURRENT_MIN_DA ||
+            cfg->mode_current_dA[i] > VESC_RIDE_CURRENT_MAX_DA) {
             why = VESC_RIDE_RESULT_OUT_OF_RANGE;
             goto done;
         }
-    }
-
-    /* Non-decreasing, so mode 3 is never slower than mode 1. A rider who has
-     * just set mode 2 above mode 3 should be told, not quietly handed one of
-     * the two values back. */
-    if (cfg->speed_dkmh[0] > cfg->speed_dkmh[1] ||
-        cfg->speed_dkmh[1] > cfg->speed_dkmh[2]) {
-        why = VESC_RIDE_RESULT_ORDER_INVALID;
-        goto done;
     }
 
     /* Reverse limits are checked whether or not reverse is enabled: a disabled
@@ -82,10 +76,11 @@ bool vesc_ride_mode_parse_config(const uint8_t *data, unsigned int len,
     cfg.response_seq   = seq;
     cfg.format_version = fmt;
 
-    /* An unknown format is not a config we can read: the fields below may have
-     * moved. Report it rather than decode anyway -- valid stays false so the
-     * screen shows nothing, but the sequence number is still trustworthy, so a
-     * Save waiting on this reply gets an answer instead of a timeout. */
+    /* Format 1 put a speed and a per-mille scale where the ampere figures now
+     * live, so reading a v1 payload as v2 would produce numbers that look
+     * plausible and mean something else entirely. Refuse, but still hand back
+     * the sequence number so a Save waiting on this reply gets an answer
+     * instead of a timeout. */
     if (fmt != VESC_RIDE_CONFIG_FORMAT_VERSION) {
         cfg.valid       = false;
         cfg.last_result = VESC_RIDE_RESULT_BAD_VERSION;
@@ -95,16 +90,16 @@ bool vesc_ride_mode_parse_config(const uint8_t *data, unsigned int len,
 
     cfg.config_revision = buffer_get_uint16(data, &ind);
     for (unsigned i = 0; i < VESC_RIDE_MODE_COUNT; i++) {
-        cfg.speed_dkmh[i]       = buffer_get_uint16(data, &ind);
-        cfg.current_permille[i] = buffer_get_uint16(data, &ind);
+        cfg.mode_current_dA[i] = buffer_get_uint16(data, &ind);
     }
-    cfg.reverse_enabled    = data[ind++] != 0;
-    cfg.reverse_speed_dkmh = buffer_get_uint16(data, &ind);
-    cfg.reverse_current_dA = buffer_get_uint16(data, &ind);
-    cfg.persist_pending    = data[ind++] != 0;
-    cfg.last_result        = (result <= VESC_RIDE_RESULT_UNSUPPORTED_HARDWARE)
-                             ? (vesc_ride_result_t)result
-                             : VESC_RIDE_RESULT_OUT_OF_RANGE;
+    cfg.reverse_enabled     = data[ind++] != 0;
+    cfg.reverse_speed_dkmh  = buffer_get_uint16(data, &ind);
+    cfg.reverse_current_dA  = buffer_get_uint16(data, &ind);
+    cfg.esc_current_max_dA  = buffer_get_uint16(data, &ind);
+    cfg.persist_pending     = data[ind++] != 0;
+    cfg.last_result         = (result <= VESC_RIDE_RESULT_UNSUPPORTED_HARDWARE)
+                              ? (vesc_ride_result_t)result
+                              : VESC_RIDE_RESULT_OUT_OF_RANGE;
     /* valid means "these numbers are what the vehicle holds". A refusal still
      * carries the config in force -- that is why it is echoed -- so the editor
      * can snap back to reality instead of leaving rejected numbers on screen. */
@@ -127,20 +122,25 @@ bool vesc_ride_mode_parse_status(const uint8_t *data, unsigned int len,
     int32_t ind = 4;
     vesc_ride_status_t st;
     memset(&st, 0, sizeof st);
-    st.config_revision   = buffer_get_uint16(data, &ind);
-    st.current_profile   = data[ind++];
-    st.active_speed_dkmh = buffer_get_uint16(data, &ind);
-    st.direction_state   = (int8_t)data[ind++];
-    st.reverse_button    = data[ind++] != 0;
-    st.reverse_armed     = data[ind++] != 0;
-    st.persist_pending   = data[ind++] != 0;
-    st.fault_reason      = data[ind++];
+    st.config_revision      = buffer_get_uint16(data, &ind);
+    st.current_profile      = data[ind++];
+    st.requested_current_dA = buffer_get_uint16(data, &ind);
+    st.effective_current_dA = buffer_get_uint16(data, &ind);
+    st.esc_current_max_dA   = buffer_get_uint16(data, &ind);
+    st.direction_state      = (int8_t)data[ind++];
+    st.reverse_button       = data[ind++] != 0;
+    st.reverse_armed        = data[ind++] != 0;
+    st.persist_pending      = data[ind++] != 0;
+    st.fault_reason         = data[ind++];
 
     /* A profile outside 0..2 means the two sides disagree about the protocol;
      * publishing it would index the screen's name array off its end. Same for
      * a direction that is not one of the three defined states. */
     if (st.current_profile >= VESC_RIDE_MODE_COUNT) return false;
     if (st.direction_state < -1 || st.direction_state > 1) return false;
+    /* Effective can never exceed requested: it is a clamp, so a reply saying
+     * otherwise is a decode error, not a vehicle state. */
+    if (st.effective_current_dA > st.requested_current_dA) return false;
 
     st.valid = true;
     *out = st;

@@ -35,7 +35,8 @@ static int g_fail;
 
 /* ------------------------------------------------------------- builders */
 
-/* A well-formed RIDE_CONFIG carrying the default configuration. */
+/* A well-formed RIDE_CONFIG carrying a configuration whose top mode asks for
+ * more than the ESC can deliver -- the case format 2 exists to express. */
 static unsigned build_config(uint8_t *b, uint16_t seq, uint8_t result,
                              uint8_t fmt)
 {
@@ -48,12 +49,13 @@ static unsigned build_config(uint8_t *b, uint16_t seq, uint8_t result,
     b[ind++] = result;
     b[ind++] = fmt;
     buffer_append_uint16(b, 7, &ind);        /* config_revision */
-    buffer_append_uint16(b, 50,   &ind);  buffer_append_uint16(b, 300,  &ind);
-    buffer_append_uint16(b, 100,  &ind);  buffer_append_uint16(b, 600,  &ind);
-    buffer_append_uint16(b, 200,  &ind);  buffer_append_uint16(b, 1000, &ind);
+    buffer_append_uint16(b, 500,  &ind);     /* mode0  50.0 A */
+    buffer_append_uint16(b, 700,  &ind);     /* mode1  70.0 A */
+    buffer_append_uint16(b, 1000, &ind);     /* mode2 100.0 A, above the ESC */
     b[ind++] = 1;                            /* reverse_enabled */
     buffer_append_uint16(b, 30, &ind);       /* reverse_speed_dkmh */
     buffer_append_uint16(b, 70, &ind);       /* reverse_current_dA */
+    buffer_append_uint16(b, 700, &ind);      /* esc_current_max_dA 70.0 A */
     b[ind++] = 1;                            /* persist_pending */
     return (unsigned)ind;
 }
@@ -67,7 +69,9 @@ static unsigned build_status(uint8_t *b, uint8_t profile, int8_t dir)
     b[ind++] = VRM_MSG_STATUS;
     buffer_append_uint16(b, 7, &ind);        /* config_revision */
     b[ind++] = profile;
-    buffer_append_uint16(b, 100, &ind);      /* active_speed_dkmh */
+    buffer_append_uint16(b, 1000, &ind);     /* requested 100.0 A */
+    buffer_append_uint16(b, 700,  &ind);     /* effective  70.0 A, clamped */
+    buffer_append_uint16(b, 700,  &ind);     /* esc max     70.0 A */
     b[ind++] = (uint8_t)dir;
     b[ind++] = 1;                            /* reverse_button */
     b[ind++] = 0;                            /* reverse_armed */
@@ -79,9 +83,9 @@ static unsigned build_status(uint8_t *b, uint8_t profile, int8_t dir)
 static void defaults(vesc_ride_config_t *c)
 {
     memset(c, 0, sizeof *c);
-    c->speed_dkmh[0] = 50;  c->current_permille[0] = 300;
-    c->speed_dkmh[1] = 100; c->current_permille[1] = 600;
-    c->speed_dkmh[2] = 200; c->current_permille[2] = 1000;
+    c->mode_current_dA[0] = 500;
+    c->mode_current_dA[1] = 700;
+    c->mode_current_dA[2] = 1000;
     c->reverse_enabled    = false;
     c->reverse_speed_dkmh = 30;
     c->reverse_current_dA = 70;
@@ -108,10 +112,9 @@ int main(void)
     CHECK(cfg.valid, "valid flag not set");
     CHECK(cfg.response_seq == 42, "seq=%u", cfg.response_seq);
     CHECK(cfg.config_revision == 7, "revision=%u", cfg.config_revision);
-    CHECK(cfg.speed_dkmh[0] == 50 && cfg.current_permille[0] == 300,
-          "mode0 %u/%u", cfg.speed_dkmh[0], cfg.current_permille[0]);
-    CHECK(cfg.speed_dkmh[2] == 200 && cfg.current_permille[2] == 1000,
-          "mode2 %u/%u", cfg.speed_dkmh[2], cfg.current_permille[2]);
+    CHECK(cfg.mode_current_dA[0] == 500, "mode0 %u", cfg.mode_current_dA[0]);
+    CHECK(cfg.mode_current_dA[2] == 1000, "mode2 %u", cfg.mode_current_dA[2]);
+    CHECK(cfg.esc_current_max_dA == 700, "esc max %u", cfg.esc_current_max_dA);
     CHECK(cfg.reverse_enabled, "reverse_enabled lost");
     CHECK(cfg.reverse_speed_dkmh == 30 && cfg.reverse_current_dA == 70,
           "reverse %u/%u", cfg.reverse_speed_dkmh, cfg.reverse_current_dA);
@@ -148,7 +151,7 @@ int main(void)
           "result=%d want BAD_VERSION", cfg.last_result);
     CHECK(cfg.response_seq == 77, "seq lost on bad version: %u",
           cfg.response_seq);
-    CHECK(cfg.speed_dkmh[0] == 0, "decoded fields from an unknown format");
+    CHECK(cfg.mode_current_dA[0] == 0, "decoded fields from an unknown format");
 
     printf("[unknown message id is not ours]\n");
     n = build_config(b, 1, VESC_RIDE_RESULT_OK, VESC_RIDE_CONFIG_FORMAT_VERSION);
@@ -170,7 +173,7 @@ int main(void)
     CHECK(cfg.valid, "refusal must still carry usable numbers");
     CHECK(cfg.last_result == VESC_RIDE_RESULT_VEHICLE_MOVING,
           "result=%d", cfg.last_result);
-    CHECK(cfg.speed_dkmh[1] == 100, "config lost on a refusal");
+    CHECK(cfg.mode_current_dA[1] == 700, "config lost on a refusal");
 
     printf("[valid status packet]\n");
     n = build_status(b, 2, -1);
@@ -180,7 +183,11 @@ int main(void)
     CHECK(st.valid, "valid flag not set");
     CHECK(st.current_profile == 2, "profile=%u", st.current_profile);
     CHECK(st.direction_state == -1, "direction=%d", st.direction_state);
-    CHECK(st.active_speed_dkmh == 100, "speed=%u", st.active_speed_dkmh);
+    CHECK(st.requested_current_dA == 1000, "requested=%u",
+          st.requested_current_dA);
+    CHECK(st.effective_current_dA == 700, "effective=%u",
+          st.effective_current_dA);
+    CHECK(st.esc_current_max_dA == 700, "esc max=%u", st.esc_current_max_dA);
     CHECK(st.reverse_button, "button lost");
 
     /* Out-of-range enums are the ones that reach an array index in the screen,
@@ -189,7 +196,7 @@ int main(void)
     n = build_status(b, 3, 1);          /* profile 3 does not exist */
     CHECK(!vesc_ride_mode_parse_status(b, n, &st), "accepted profile 3");
     n = build_status(b, 0, 1);
-    b[9] = 5;                            /* direction 5 */
+    b[13] = 5;                           /* direction 5 */
     CHECK(!vesc_ride_mode_parse_status(b, n, &st), "accepted direction 5");
 
     /* ---- range check, contract section 3 -------------------------------- */
@@ -206,16 +213,13 @@ int main(void)
     printf("[range check rejects each field]\n");
     {
         vesc_ride_result_t why;
-        struct { const char *what; unsigned idx; uint16_t val; int is_speed; }
-        cases[] = {
-            { "speed below minimum",   0, 9,    1 },
-            { "current below minimum", 1, 99,   0 },
-            { "current above maximum", 2, 1001, 0 },
+        struct { const char *what; unsigned idx; uint16_t val; } cases[] = {
+            { "current below minimum", 0, VESC_RIDE_CURRENT_MIN_DA - 1 },
+            { "current above maximum", 2, VESC_RIDE_CURRENT_MAX_DA + 1 },
         };
         for (unsigned k = 0; k < sizeof cases / sizeof cases[0]; k++) {
             defaults(&cfg);
-            if (cases[k].is_speed) cfg.speed_dkmh[cases[k].idx] = cases[k].val;
-            else cfg.current_permille[cases[k].idx] = cases[k].val;
+            cfg.mode_current_dA[cases[k].idx] = cases[k].val;
             why = VESC_RIDE_RESULT_OK;
             CHECK(!vesc_ride_mode_config_in_range(&cfg, &why),
                   "%s accepted", cases[k].what);
@@ -224,23 +228,32 @@ int main(void)
         }
     }
 
-    /* Ordering is its own result code because it is the one a rider trips by
-     * accident, and "out of range" would send them looking at the wrong field. */
-    printf("[modes must not decrease]\n");
+    /* Format 1 required non-decreasing speeds. Format 2's modes are
+     * independent current limits, so a decreasing set is a legitimate choice
+     * and must be accepted -- this asserts the rule is really gone, not merely
+     * unreachable. */
+    printf("[modes are independent, decreasing is legal]\n");
     {
-        vesc_ride_result_t why = VESC_RIDE_RESULT_OK;
+        vesc_ride_result_t why = VESC_RIDE_RESULT_TIMEOUT;
         defaults(&cfg);
-        cfg.speed_dkmh[1] = 250;         /* mode 2 faster than mode 3 */
-        CHECK(!vesc_ride_mode_config_in_range(&cfg, &why), "decreasing accepted");
-        CHECK(why == VESC_RIDE_RESULT_ORDER_INVALID, "why=%d want ORDER", why);
-
-        /* Equal is not decreasing: three modes at the same speed is a legal, if
-         * pointless, choice and must not be reported as an error. */
-        defaults(&cfg);
-        cfg.speed_dkmh[0] = cfg.speed_dkmh[1] = cfg.speed_dkmh[2] = 100;
-        why = VESC_RIDE_RESULT_TIMEOUT;
+        cfg.mode_current_dA[0] = 900;
+        cfg.mode_current_dA[1] = 400;
+        cfg.mode_current_dA[2] = 700;
         CHECK(vesc_ride_mode_config_in_range(&cfg, &why),
-              "equal speeds rejected: why=%d", why);
+              "90/40/70 A rejected: why=%d", why);
+        CHECK(why == VESC_RIDE_RESULT_OK, "why=%d", why);
+    }
+
+    /* A value above what this ESC can deliver is legal to STORE: it clamps
+     * when applied, and that is what lets a later Motor Current Max increase
+     * take effect without re-entering anything. */
+    printf("[a mode above the ESC is storable]\n");
+    {
+        vesc_ride_result_t why = VESC_RIDE_RESULT_TIMEOUT;
+        defaults(&cfg);
+        cfg.mode_current_dA[2] = VESC_RIDE_CURRENT_MAX_DA;
+        CHECK(vesc_ride_mode_config_in_range(&cfg, &why),
+              "999 A rejected: why=%d", why);
     }
 
     /* Reverse limits are enforced even when reverse is off: the config is

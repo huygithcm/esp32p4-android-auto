@@ -28,6 +28,107 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-08-30 12:40 +07:00 - Claude - Ride modes v2: absolute amperes, cruise removed, reverse on RX
+- Scope: user asked for both halves, so the shared header stopped being a
+  coordination problem and I implemented BE and FE together. This is
+  `docs/RIDE_MODE_ABSOLUTE_CURRENT_PLAN.md` sections 2-6, plus the FE parts of
+  section 5 that the screen needed to stay truthful.
+- Data model: a mode is now ONE absolute motor-current limit in dA and nothing
+  else. `effective = min(requested, l-current-max)`; the requested figure is
+  stored as typed even above what this ESC allows, so raising Motor Current Max
+  later starts using it with nothing re-entered. The ESC is never raised to
+  meet a mode. Entry range 10..9990 dA (1..999 A) per the user's three-digit
+  decision, with no ESC-derived ceiling. No ordering rule: 90/40/70 A is a
+  legitimate choice, and ORDER_INVALID is now reserved-but-never-returned.
+- Format 2 everywhere: `VESC_RIDE_CONFIG_FORMAT_VERSION` 1 -> 2, config packet
+  28 -> 24 bytes, status 14 -> 18 (it gained requested/effective/esc-max),
+  EEPROM magic `RM v1` -> `RM v2` and the block shrank from nine slots to six.
+  The magic had to change: format 1 stored a per-mille scale where amperes now
+  live, and a stale 300 meaning "30%" would read as 30.0 A.
+- `sync-current-scale` runs in the motor loop: it re-derives the scale from the
+  live `l-current-max` and only calls `conf-set` when the answer changes. Drop
+  Motor Current Max from 70 to 60 in VESC Tool and a 100 A mode becomes 60 A on
+  the next tick with nothing reloaded.
+- Cruise is gone from `lisp/main.lisp` entirely -- state, gains, the four
+  functions, `cruise-out`, `monitor-rx-button`, `update-rpm-per-ms` and the
+  arbiter branch. Arbiter is now master-off > brake > direction > throttle >
+  PAS > coast. The DASH packet keeps its two cruise slots by position so older
+  displays still parse it, and now carries requested/effective current there.
+- Reverse moved from `pin-ppm` to `pin-rx`. This is the change that matters
+  most: RX was the cruise button, so the wiring exists, is already a dry
+  contact to ESC ground, and is already proven on the vehicle. It removes ALL
+  THREE unverified risks from `docs/LISP_VERIFICATION_PLAN.md` -- no `pin-ppm`
+  symbol, no reliance on `spawn-trap` to contain a wrong pin (it is kept as
+  cheap insurance), and no waiting on a connector pinout. The top-level
+  `gpio-configure` of `pin-rx` was removed so the only call is the guarded one
+  inside `monitor-reverse`.
+- One guard, one place: `ride-select-mode` is now the single path for every
+  mode change -- TX button, quick panel radio group, ride SELECT 0x09 and the
+  BLE helper's cmd=2 all route through it, so the `rv-dir == 1` check cannot be
+  bypassed. It used to live only in the TX monitor. TX also gained a 4x10 ms
+  stable-count debounce; sampling at 50 ms and taking any edge could register
+  two mode changes from one bouncing press.
+- FE: one current editor per mode instead of speed+per-mille, a per-mode
+  "Effective now" readout, and an active-status line that says
+  "M3 - 70 A (capped from 100 A)" when the ESC is clamping. Panel labels went
+  from "Slow 5 km/h" to "Mode 1/2/3" -- the old ones stopped being true the
+  moment the limits became editable. Simulator fixture updated to a 70 A ESC
+  against a 100 A mode 3, so the clamp is what the simulator exercises.
+- Checks: ride-mode host test 13 groups PASS (0 failures) including two new
+  ones asserting the ordering rule is really gone and that a mode above the ESC
+  is storable; BMS test 12 groups PASS; mutation check produces 17 failures
+  against a weakened parser. Lisp static: balance PASS, one const block PASS,
+  no mutable def below `@const-start` PASS, unique message ids PASS, no cruise
+  or v1-model symbol left PASS. Firmware build exit 0, app 0x439cc0 of
+  0x500000 (15% free).
+- Status: complete off-vehicle.
+- Handoff: `flutter test test/lisp_lint_test.dart` and the simulator build have
+  NOT been run here -- no Flutter on PATH -- and `lisp/main.lisp` is that
+  test's golden fixture. `conf-set 'min-speed` is now the only unverified Lisp
+  call left. `lisp/README.md` still describes fixed profiles and cruise, both
+  of which are gone. Bench sequence: contract section 12, but rewritten for the
+  new button map -- RX is reverse-hold, TX is Mode -- and case 2 (boot with RX
+  held) is still the first one to run.
+
+### 2026-09-01 - Claude - Port plan: non-Android-Auto build for ESP32 / ESP32-S3
+- Scope: khảo sát toàn bộ luồng code hiện tại để xác định phần trích xuất được
+  sang ESP32-S3 (và ESP32 classic) khi bỏ Android Auto. Không sửa code firmware.
+- Files: thêm `docs/ESP32_S3_PORT_PLAN.md`. Chỉ đọc: `main/*`, `components/*`,
+  `Super_VESC_Display/{generated,custom}`, `sdkconfig.defaults*`,
+  `partitions_16mb.csv`, `build_jc4880/esp32p4_android_auto.map`.
+- Checks: không build (đây là khảo sát). Số liệu flash lấy bằng cách tổng hợp
+  section size theo object từ `build_jc4880/esp32p4_android_auto.map` (image
+  4.429.456 B): blob C6 + BT agent + serial-flasher 1349 KB, esp-hosted +
+  esp_wifi_remote 435 KB, AA-only 275 KB, VESC app+UI 696 KB, LVGL 528 KB.
+  Đếm cơ học: ~1.000 lời gọi toạ độ tuyệt đối trong UI (668 riêng ở 4 file
+  `setup_scr_dashboard_*.c`); 12 hàm BSP thực sự được app gọi.
+- Status: observation
+- Handoff: hai phát hiện dễ sai nếu người sau đọc lướt — (1)
+  `main/fonts/aabridge_font_*.c` mang tên AA nhưng là của `notif_toast.c` và
+  `music_info_view.c`, không được bỏ theo AA; (2) `main/vbat_routing.c` là
+  P4-only (PMU LP + CR2032), không port được sang S3/ESP32. Chưa chốt được IC
+  driver / giao tiếp của ba màn 2.8"/4.3"/7" mà user đang có — xem §8 của tài
+  liệu, đây là chặn cho bước BSP.
+
+### 2026-08-30 11:18 +07:00 - Codex - Separate and enlarge BMS cell/wire section
+- Scope: move CELLS/WIRE out of the dense overview row into a dedicated
+  full-width section and double the cell-value form size for readability.
+- Files: changed `Super_VESC_Display/custom/bms_view.c` and updated
+  `docs/ui-references/bms/README.md`; preserved Claude's concurrent ride-mode,
+  BMS contract and realtime-viewer changes.
+- Findings: cards are now exactly `238x52` with 24 px values versus the former
+  `119x26`/12 px, arranged in three columns. The section height follows the
+  actual 1..32-cell row count and the existing outer BMS container owns all
+  vertical scrolling. CELLS/WIRE summaries are mode-specific; long summaries
+  are clipped with dots, invalid masks cannot expose overlapping `--` cards,
+  and switching mode returns to the section header before the section shrinks.
+- Checks: geometry audited for 10/24/32-cell counts; `git diff --check` passed;
+  simulator object compiled and full `simulator.exe`/`simulator.dll` link
+  passed. Final BMS preview is running and responsive as PID 26344.
+- Status: FE implementation complete; awaiting user visual feedback
+- Handoff: exercise CELLS/WIRE and vertical scroll in the open simulator. A
+  physical 24S/32S BMS remains the final proof of real mask/count data.
+
 ### 2026-08-30 11:10 +07:00 - Claude - Read the absolute-current plan; user approved its three gates
 - Scope: read `docs/RIDE_MODE_ABSOLUTE_CURRENT_PLAN.md` (Codex, 2026-08-30),
   verified its findings against my code, and put its three approval questions

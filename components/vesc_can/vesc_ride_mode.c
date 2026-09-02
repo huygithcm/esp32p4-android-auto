@@ -259,8 +259,7 @@ static void send_set(uint16_t seq, const vesc_ride_config_t *cfg)
     buffer_append_uint16(buf, seq, &ind);
     buf[ind++] = VESC_RIDE_CONFIG_FORMAT_VERSION;
     for (unsigned i = 0; i < VESC_RIDE_MODE_COUNT; i++) {
-        buffer_append_uint16(buf, cfg->speed_dkmh[i], &ind);
-        buffer_append_uint16(buf, cfg->current_permille[i], &ind);
+        buffer_append_uint16(buf, cfg->mode_current_dA[i], &ind);
     }
     buf[ind++] = cfg->reverse_enabled ? 1u : 0u;
     buffer_append_uint16(buf, cfg->reverse_speed_dkmh, &ind);

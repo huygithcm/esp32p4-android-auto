@@ -33,9 +33,15 @@
                               [u8 persist_pending][u8 fault_reason]
 
     Values travel as the data model's scaled integers rather than this
-    protocol's usual x1000 floats: speeds are km/h x 10, current scale is
-    per-mille. Both ends then agree exactly, and a number the rider typed
+    protocol's usual x1000 floats: currents are amps x 10, the reverse speed is
+    km/h x 10. Both ends then agree exactly, and a number the rider typed
     cannot come back a rounding step from what they set.
+
+    Format 2 replaced the per-mode speed and per-mille scale with one absolute
+    ampere figure per mode, and added esc_current_max_dA to every reply so the
+    screen can show requested against effective. A format 1 parser must not
+    read a format 2 payload: the version byte sits before every field that
+    moved, and both sides refuse on mismatch.
 */
 
 #pragma once
@@ -65,9 +71,38 @@ extern "C" {
 #define VRM_MSG_STATUS        0x89u
 
 /* Exact on-wire lengths, COMM byte included. Anything shorter is refused
- * before a single field is read. */
-#define VRM_CONFIG_MSG_LEN    28u
-#define VRM_STATUS_MSG_LEN    14u
+ * before a single field is read.
+ *
+ * FORMAT 2 layouts, in full:
+ *
+ *   0x87 RIDE_CONFIG   (24 bytes, P4 side, COMM byte at [0])
+ *     [0] COMM  [1..2] magic  [3] 0x87
+ *     [4..5] seq   [6] result  [7] format_version
+ *     [8..9] config_revision
+ *     [10..11] mode0_dA  [12..13] mode1_dA  [14..15] mode2_dA
+ *     [16] reverse_enabled
+ *     [17..18] reverse_speed_dkmh  [19..20] reverse_current_dA
+ *     [21..22] esc_current_max_dA
+ *     [23] persist_pending
+ *
+ *   0x89 RIDE_STATUS   (18 bytes)
+ *     [0] COMM  [1..2] magic  [3] 0x89
+ *     [4..5] config_revision  [6] current_profile
+ *     [7..8] requested_current_dA  [9..10] effective_current_dA
+ *     [11..12] esc_current_max_dA
+ *     [13] direction_state (i8)  [14] reverse_button  [15] reverse_armed
+ *     [16] persist_pending  [17] fault_reason
+ *
+ *   0x08 SET_CONFIG    (18 bytes as Lisp sees it, i.e. no COMM byte)
+ *     [0..1] magic  [2] 0x08  [3] reply_id  [4..5] seq  [6] format_version
+ *     [7..8] mode0_dA  [9..10] mode1_dA  [11..12] mode2_dA
+ *     [13] reverse_enabled
+ *     [14..15] reverse_speed_dkmh  [16..17] reverse_current_dA
+ */
+#define VRM_CONFIG_MSG_LEN    24u
+#define VRM_STATUS_MSG_LEN    18u
+/* What the Lisp side must see before it may read a SET payload. */
+#define VRM_SET_MSG_LEN       18u
 
 /* Pure parsers, exposed for the host tests. They write *out only when they
  * return true and never read past `len`.
