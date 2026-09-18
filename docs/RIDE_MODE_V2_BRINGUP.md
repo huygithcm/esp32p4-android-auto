@@ -91,7 +91,17 @@ Mở tab **Ride Modes** trên màn hình.
 - dòng trạng thái góc phải: `Active M1 - 50 A`.
 
 Đổi sang Mode 3 bằng nút TX. **Đạt:** dòng trạng thái đổi thành
-`Active M3 - 70 A (capped from 100 A)`, và có tiếng bíp theo mode.
+`Active M3 - 70 A (capped from 100 A)`. Đổi mode không phát tiếng bíp bằng
+motor và không gửi lệnh tạo dòng riêng; chỉ cập nhật giới hạn dòng.
+
+Kiểm tra với ga đã nhả, PAS tắt và không giữ nút lùi: chuyển Mode 1/2/3
+bằng TX và trên màn hình, rồi Save cấu hình. Motor phải đứng yên, không có
+tiếng bíp/xung dòng do đổi mode. Nút `Beep` riêng vẫn phát âm bằng motor,
+nên không dùng nút đó trong phép thử này. Khi đang có ga hoặc PAS, đổi mode
+vẫn thay đổi trần dòng áp dụng cho yêu cầu chạy hiện tại.
+
+Cruise/giữ ga đã được bỏ khỏi script. Nhả ga vẫn giảm dòng theo ramp ADC;
+PAS là nguồn trợ lực riêng và có thể tiếp tục yêu cầu dòng khi đang đạp.
 
 **Kiểm tra `sync-current-scale` — đây là thứ chỉ v2 mới có:** để nguyên Mode 3,
 vào VESC Tool hạ `Motor Current Max` từ 70 xuống 60 A rồi Apply.

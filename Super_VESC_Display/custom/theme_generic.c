@@ -72,6 +72,15 @@ void dashboard_generic_set_active(const dashboard_widgets_t *w)
     s_warn_shown     = false;
     s_warn_blink_ms  = 0;
 
+    if (w && w->mode_text) {
+        lv_obj_update_layout(w->screen);
+        lv_coord_t cx = lv_obj_get_x(w->mode_text) + lv_obj_get_width(w->mode_text) / 2;
+        lv_coord_t cy = lv_obj_get_y(w->mode_text) + lv_obj_get_height(w->mode_text) / 2;
+        /* Classic-derived layouts share the same free slot below speed. */
+        if (lv_obj_get_y(w->mode_text) < 40) { cx = 400; cy = 302; }
+        dashboard_gear_circle_style(w->mode_text, cx, cy);
+    }
+
     /* Phantom-touch hardening for the invisible brightness drag slider — the
      * same fix the cockpit theme carries in custom.c. GUI Guider styles the
      * slider transparent only in LV_STATE_DEFAULT, so a vibration-induced
@@ -406,13 +415,8 @@ static void g_mode_text(uint8_t mode)
     if (!s_w || !s_w->mode_text) return;
     if (lv_obj_has_flag(s_w->mode_text, LV_OBJ_FLAG_HIDDEN))
         lv_obj_clear_flag(s_w->mode_text, LV_OBJ_FLAG_HIDDEN);   /* re-show after no-Lisp */
-    char text[16];
-    if (mode == DASH_MODE_REVERSE) {
-        snprintf(text, sizeof(text), "MODE R");
-    } else {
-        snprintf(text, sizeof(text), "MODE %d", mode + 1);
-    }
-    dash_label_set(s_w->mode_text, text);
+    dash_label_set(s_w->mode_text, dashboard_gear_text(mode));
+    dashboard_gear_apply_color(s_w->mode_text, mode);
 }
 
 static void g_cur_time(int hour, int minute, int second)

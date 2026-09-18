@@ -16,6 +16,12 @@ Before changing files:
 
 While working:
 
+- When the user requests an interactive simulator window, launch it outside
+  the sandbox (request the required tool approval) with `-WindowStyle Normal`
+  and `SDL_VIDEODRIVER=windows`. Do not use a sandbox launch for visible UI.
+  Build/headless tests may stay sandboxed. A running process/window handle is
+  not proof that the user can see it. See `docs/SIMULATOR_WINDOWS_LAUNCH.md`.
+
 - Use repository-relative paths in source, scripts, and documentation. Only
   use the canonical absolute root when an absolute path is unavoidable.
 - Keep changes narrowly scoped and re-check the working tree before editing a
@@ -32,4 +38,3 @@ Before handing off:
 2. Run `git status --short --branch` again.
 3. Update `COLLABORATION_LOG.md` so the next collaborator sees the current
    state without reconstructing it from Git history.
-

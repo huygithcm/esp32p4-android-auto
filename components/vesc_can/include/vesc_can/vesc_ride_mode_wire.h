@@ -66,6 +66,24 @@ extern "C" {
  * the P4's cached profile is stale the instant the rider presses the TX button
  * and re-asserting it drags the mode back. This asks and changes nothing. */
 #define VRM_MSG_REQ_STATUS    0x0Au
+#define VRM_MSG_REQ_SAFETY    0x0Bu
+#define VRM_MSG_SET_PARK      0x0Cu
+#define VRM_MSG_REQ_STATUS_SEQ 0x0Du
+#define VRM_MSG_STATUS_SEQ    0x8Du
+#define VRM_STATUS_SEQ_MSG_LEN 20u
+/* 0x0D request: COMM,V,P,id,reply_id,seq:u16.
+ * 0x8D reply: COMM,V,P,id,seq:u16, followed by the legacy status payload.
+ * Legacy 0x89 remains parseable but cannot refresh the live transport. */
+#define VRM_MSG_SAFETY        0x8Bu
+#define VRM_MSG_PARK_ACK      0x8Cu
+#define VRM_SAFETY_MSG_LEN    10u
+/* Reply: COMM, V, P, id, version, seq:u16, state, profile, result.
+ * SET consumes the latest acknowledged query sequence as a one-shot token.
+ * Its distinct reply id prevents a duplicate query from acknowledging SET. */
+bool vesc_ride_mode_parse_safety(const uint8_t *data, unsigned int len,
+                               vesc_ride_safety_t *out);
+bool vesc_ride_safety_reply_matches(uint16_t received, uint16_t pending,
+                                  uint32_t sent_ms, uint32_t now_ms);
 /* Lisp -> P4 */
 #define VRM_MSG_CONFIG        0x87u
 #define VRM_MSG_STATUS        0x89u

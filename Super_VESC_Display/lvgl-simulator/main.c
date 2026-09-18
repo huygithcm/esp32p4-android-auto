@@ -18,10 +18,107 @@
 #include "lv_drivers/indev/keyboard.h"
 #include "gui_guider.h"
 #include "custom.h"
+#include "dashboard_theme.h"
 #include "widgets_init.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
+
+static lv_obj_t *gear_preview_status;
+static uint8_t gear_preview_value = DASH_MODE_PARK;
+static const char *const gear_case_names[] = {"P", "1", "2", "3", "R", "Wait", "Stale"};
+static const uint8_t gear_case_values[] = {DASH_MODE_PARK, 0, 1, 2,
+    DASH_MODE_REVERSE, DASH_MODE_UNKNOWN, DASH_MODE_UNKNOWN};
+
+static void gear_preview_tick(lv_timer_t *timer)
+{
+    (void)timer;
+    dashboard_demo_set_active(false);
+    update_mode_text(gear_preview_value);
+}
+
+static void gear_preview_select(lv_event_t *event)
+{
+    unsigned idx = (unsigned)(uintptr_t)lv_event_get_user_data(event);
+    gear_preview_value = gear_case_values[idx];
+    const char *detail = idx == 5 ? "Interlock: reverse NOT ready" :
+                         idx == 6 ? "Telemetry expired: permission unknown" :
+                         "Injected display state (not a motor command)";
+    lv_label_set_text(gear_preview_status, detail);
+    update_mode_text(gear_preview_value);
+}
+
+static void gear_preview_open(void)
+{
+    dashboard_demo_set_active(false);
+    update_speed(0);
+    lv_obj_t *panel = lv_obj_create(lv_layer_top());
+    lv_obj_set_pos(panel, 195, 38);
+    lv_obj_set_size(panel, 410, 112);
+    lv_obj_set_style_pad_all(panel, 5, 0);
+    lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *title = lv_label_create(panel);
+    lv_label_set_text(title, "SIMULATION ONLY - Gear display cases");
+    lv_obj_set_pos(title, 0, 0);
+    for (unsigned i = 0; i < sizeof(gear_case_values); ++i) {
+        lv_obj_t *button = lv_btn_create(panel);
+        lv_obj_set_pos(button, i * 56, 26);
+        lv_obj_set_size(button, 52, 34);
+        lv_obj_add_event_cb(button, gear_preview_select, LV_EVENT_CLICKED,
+                            (void *)(uintptr_t)i);
+        lv_obj_t *label = lv_label_create(button);
+        lv_label_set_text(label, gear_case_names[i]);
+        lv_obj_center(label);
+    }
+    gear_preview_status = lv_label_create(panel);
+    lv_obj_set_pos(gear_preview_status, 0, 70);
+    lv_label_set_text(gear_preview_status, "Boot preview: P (simulated)");
+    update_mode_text(gear_preview_value);
+    lv_timer_create(gear_preview_tick, 100, NULL);
+}
+
+static lv_obj_t *find_gear_circle(lv_obj_t *root)
+{
+    if (lv_obj_check_type(root, &lv_label_class) &&
+        lv_obj_get_width(root) == DASH_GEAR_DIAMETER &&
+        lv_obj_get_height(root) == DASH_GEAR_DIAMETER &&
+        lv_obj_get_style_radius(root, LV_PART_MAIN) == LV_RADIUS_CIRCLE)
+        return root;
+    for (uint32_t i = 0; i < lv_obj_get_child_cnt(root); ++i) {
+        lv_obj_t *found = find_gear_circle(lv_obj_get_child(root, i));
+        if (found) return found;
+    }
+    return NULL;
+}
+
+static void gear_render_self_test(void)
+{
+    static const char *const expected[] = {"P", "1", "2", "3", "R", "-", "-"};
+    for (int theme = 0; theme < dashboard_theme_count(); ++theme) {
+    dashboard_theme_set(theme);
+    lv_obj_update_layout(dashboard_theme_active_screen());
+    lv_obj_t *gear = find_gear_circle(dashboard_theme_active_screen());
+    assert(gear);
+    assert(lv_obj_get_style_text_font(gear, LV_PART_MAIN) == &lv_font_montserrat_30);
+    assert(lv_font_montserrat_30.line_height + 4 <= DASH_GEAR_DIAMETER);
+    for (unsigned i = 0; i < sizeof(gear_case_values); ++i) {
+        update_mode_text(gear_case_values[i]);
+        assert(strcmp(lv_label_get_text(gear), expected[i]) == 0);
+        assert(lv_obj_get_style_text_color(gear, LV_PART_MAIN).full ==
+            lv_color_hex(dashboard_gear_color(gear_case_values[i])).full);
+        assert(lv_obj_get_style_border_color(gear, LV_PART_MAIN).full ==
+            lv_color_hex(dashboard_gear_color(gear_case_values[i])).full);
+    }
+    update_mode_text(42); /* malformed value must never appear as gear 43 */
+    assert(strcmp(lv_label_get_text(gear), "-") == 0);
+    hide_mode_text();
+    update_mode_text(DASH_MODE_REVERSE);
+    assert(!lv_obj_has_flag(gear, LV_OBJ_FLAG_HIDDEN));
+    assert(strcmp(lv_label_get_text(gear), "R") == 0);
+    printf("PASS: theme %d, 9 gear cases, circle geometry and hide/re-show\n", theme);
+    }
+}
 
 #if LV_USE_FREEMASTER
 #include "external_data_init.h"
@@ -94,10 +191,17 @@ int main(int argc, char ** argv)
     /*Create a GUI-Guider app */
     setup_ui(&guider_ui);
     custom_init(&guider_ui);
-    /* Direct entry for BMS frontend work and screenshot automation. The
-     * Realtime simulator selects its BMS tab by default. */
+    /* Direct entry for BMS frontend work and screenshot automation. */
     if(argc > 1 && strcmp(argv[1], "--bms-preview") == 0) {
-        show_realtime_viewer();
+        show_bms_viewer();
+    }
+    if(argc > 1 && strcmp(argv[1], "--gear-preview") == 0) {
+        gear_preview_open();
+    }
+    if(argc > 1 && strcmp(argv[1], "--gear-self-test") == 0) {
+        dashboard_demo_set_active(false);
+        gear_render_self_test();
+        keep_running = 0;
     }
 #if LV_USE_FREEMASTER
     pthread_mutex_init(&jsonrpc_mutex, NULL);

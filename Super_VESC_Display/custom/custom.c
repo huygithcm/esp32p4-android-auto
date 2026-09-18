@@ -37,6 +37,28 @@ static _Atomic int s_cockpit_battery_proc_value;
 int cockpit_get_speed_value(void)        { return atomic_load(&s_cockpit_speed_value); }
 int cockpit_get_battery_proc_value(void) { return atomic_load(&s_cockpit_battery_proc_value); }
 
+void dashboard_gear_circle_style(lv_obj_t *label, lv_coord_t center_x,
+                                 lv_coord_t center_y)
+{
+    if (!label) return;
+    lv_obj_set_pos(label, center_x - DASH_GEAR_DIAMETER / 2,
+                   center_y - DASH_GEAR_DIAMETER / 2);
+    lv_obj_set_size(label, DASH_GEAR_DIAMETER, DASH_GEAR_DIAMETER);
+    lv_obj_set_style_radius(label, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_border_width(label, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(label, lv_color_hex(0x8A9499), LV_PART_MAIN);
+    lv_obj_set_style_pad_all(label, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_top(label,
+        (DASH_GEAR_DIAMETER - 4 - lv_font_montserrat_30.line_height) / 2,
+        LV_PART_MAIN);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_30, LV_PART_MAIN);
+    lv_obj_set_style_text_letter_space(label, 0, LV_PART_MAIN);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_clear_flag(label, LV_OBJ_FLAG_CLICKABLE);
+    lv_label_set_text(label, "-");
+    dashboard_gear_apply_color(label, DASH_MODE_UNKNOWN);
+}
+
 /* Bumped by dashboard_units_changed() whenever the km/miles toggle flips.
  * The update_* setters dedup on (value, epoch) so a units change forces a
  * re-format on the next push even though the canonical value is unchanged.
@@ -496,24 +518,15 @@ static void cockpit_screen_init(lv_ui *ui)
     /* GUI Guider creates the ride-mode indicator in the top status bar.
      * Override that generated layout here so regeneration cannot undo the
      * product layout. The speed digits finish around y=284 and the speed
-     * segments start at y=320, leaving this pill directly below the speed.
+     * segments start at y=320, leaving this circle directly below the speed.
      * It remains a read-only indicator; drive-mode control stays in the
      * VESC/Lisp input path to avoid accidental touches while riding. */
     if (ui->dashboard_Classic_mode_text) {
         lv_obj_t *mode = ui->dashboard_Classic_mode_text;
-        lv_obj_set_pos(mode, 330, 286);
-        lv_obj_set_size(mode, 140, 30);
-        lv_obj_set_style_text_align(mode, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_set_style_text_font(mode, &lv_font_montserratMedium_16,
-                                   LV_PART_MAIN);
+        dashboard_gear_circle_style(mode, 400, 302);
         lv_obj_set_style_text_color(mode, COCKPIT_ACCENT, LV_PART_MAIN);
         lv_obj_set_style_bg_color(mode, lv_color_hex(0x12181C), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(mode, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_radius(mode, 15, LV_PART_MAIN);
-        lv_obj_set_style_border_width(mode, 1, LV_PART_MAIN);
-        lv_obj_set_style_border_color(mode, lv_color_hex(0x4A5358),
-                                      LV_PART_MAIN);
-        lv_obj_set_style_pad_top(mode, 5, LV_PART_MAIN);
     }
 
     // BLE status is shown via dashboard_status_bt text — the
@@ -677,13 +690,8 @@ static void cockpit_demo_tick(lv_timer_t * t)
      * starts blinking. */
     update_esc_connection_status((tick % 100) < 80);
 
-    /* Cruise control: 15 s engaged, 15 s idle. When engaged, target speed
-     * follows a slow sine around 45 km/h. */
-    bool cc_on = (tick / 60) % 2;
-    update_cruise_control_status(cc_on);
-    if (cc_on) {
-        update_cruise_speed(45.0f + sinf(ts * 0.3f) * 5.0f);
-    }
+    /* Cruise was removed from vehicle controls; do not simulate it as active. */
+    update_cruise_control_status(false);
 }
 
 static lv_timer_t *s_demo_timer = NULL;
@@ -1126,19 +1134,10 @@ static void cockpit_mode_text(uint8_t mode)
         lv_obj_clear_flag(lbl, LV_OBJ_FLAG_HIDDEN);
     }
 
-    static uint8_t old_mode = -1;
-    if (mode == old_mode) {
-        return;
+    if (lbl) {
+        dash_label_set(lbl, dashboard_gear_text(mode));
+        dashboard_gear_apply_color(lbl, mode);
     }
-    old_mode = mode;
-
-    char text[20];
-    if (mode == DASH_MODE_REVERSE) {
-        sprintf(text, "MODE R");
-    } else {
-        sprintf(text, "MODE %d", mode + 1);
-    }
-    lv_label_set_text(guider_ui.dashboard_Classic_mode_text,text);
 }
 
 static void cockpit_ble_status(bool connected)

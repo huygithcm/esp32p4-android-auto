@@ -1,4 +1,5 @@
 #include "aa_overlay.h"
+#include "ride_gear_state.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -302,10 +303,9 @@ void aa_overlay_draw(uint16_t *fb)
      * Lisp script, and the overlay is a driving aid over Android Auto video,
      * so it now warns about reverse instead -- the one state where what the
      * throttle does is not what the rider expects. */
-    vlp_dash_t dash;
-    if (vesc_lisp_panel_get_dash(&dash)) {
-        cc_active = dash.reverse_armed || dash.direction_state != 1;
-    }
+    vesc_ride_safety_t state = {0};
+    vesc_ride_mode_get_safety(&state);
+    cc_active = ride_gear_symbol(&state) == 'R';
 
     char speed_buf[8];
     char batt_buf[8];

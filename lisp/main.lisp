@@ -3,10 +3,8 @@
 (def out-rel 0.0)     ; throttle slew-limiter state (relative current 0..1)
 (def brk-rel 0.0)     ; brake slew-limiter state (relative brake current 0..1)
 (def armed 0)         ; safe-start: throttle must be seen released once after boot
-; Cruise PI gains are HARDCODED here (edit + re-upload to tune): the firmware
-; speed-PID gains (s-pid-kp/ki in VESC Tool) are NOT exposed to LISP conf-get,
-; so there is nothing to read them from. Ramping times, by contrast, ARE read
-; live from the VESC Tool ADC app page — see throttle-out/brake-out.
+; No cruise/throttle-hold controller. Ramping times are read live from the
+; VESC Tool ADC app page — see throttle-out/brake-out.
 ; Throttle feel knobs. ctl-dt is the arbiter tick — 100 Hz like Vedder's
 ; vl_bike pkg: at 20 Hz the ramp advanced in 12.5%-of-max current steps, which
 ; the FOC loop executes instantly → felt like jerks, not a ramp.
@@ -15,11 +13,34 @@
 (def thr-curve-mode 0)     ; 0 exponential, 1 natural, 2 polynomial
 (def current-profile 0)
 (def num-profiles 3)
-(def first-profile-init 1)
-(def throttle-on 1)
+(def throttle-on 0)
+(def park-on 1)
+(def safety-fault 0)
+(def motor-seen 0)
+(def motor-live 0)
+(def rv-seen 0)
+(def tx-raw 1)
+(def tx-count 0)
+(def tx-seen-release 0)
+(def tx-pressed-at 0)
+(def tx-long 0)
+(def tx-exit-ok 0)
+(def tx-park-ok 0)
+(def tx-live 0)
+(def tx-seen 0)
+(def pas-ready-src -1)
+(def safety-owner -1)
+(def safety-token -1)
+(def safety-consumed 0)
+(def safety-result 0)
+(def safety-token-at 0)
 (def tc-on 0)
 (def tc-sens 50.0)
 (def pbuf (bufcreate 128))
+; send-data sends the full array: safety v1 is exactly 9 payload bytes.
+; Keep mutable arrays above @const-start.
+(def safety-buf (bufcreate 9))
+(def status-seq-buf (bufcreate 19))
 (def pi 0)
 (def beep-vol-addr 0)
 (def beep-vol (let ((v (eeprom-read-i beep-vol-addr)))
@@ -87,9 +108,51 @@
 ; Everything mutable MUST stay above this line: setq'd scalars, and especially
 ; the pbuf buffer (a flashed buffer is read-only, bufset would fail/crash).
 @const-start
-(defun play-stop () {
-    (sleep 0.1)
-    (foc-play-stop)
+; Native application output must not automatically return when Lisp stops.
+; This lock does not replace the ESC motor-command timeout or hardware inhibit.
+(app-disable-output -1)
+(set-current 0)
+; Persist ADC Control Type NONE in VESC Tool before enabling this script.
+; Do not silently write the user's flash config: NONE also prevents native
+; throttle output during reboot/before Lisp has started. ADC decoding remains.
+(defun native-input-only ()
+    (match (trap (conf-get 'adc-ctrl-type))
+        ((exit-ok (? value)) (= value 0))
+        (_ nil)))
+(if (not (native-input-only)) (setq safety-fault 9))
+
+(defun drive-clear () {
+    (setq out-rel 0.0) (setq rv-rel 0.0)
+    (setq pas-amps 0.0) (setq pas-src -1) (setq pas-ready-src -1)
+    (setq rv-armed 0) (setq rv-brake-ticks 0)
+})
+(defun ride-stopped () (<= (abs (get-speed)) 0.083))
+(defun ride-throttle-idle () (<= (get-adc-decoded 0) 0.05))
+; Explicit target command, never a toggle. Returns a protocol result code.
+; P locks propulsion, while a deliberate brake request still reaches brake-out.
+(defun ride-set-park (on) {
+    (cond
+        ((not (or (= on 0) (= on 1))) 3)
+        ((= on park-on) 0)
+        ((not (ride-stopped)) 5)
+        ((not (ride-throttle-idle)) 6)
+        ((and (= on 1) (<= (get-adc-decoded 1) 0.05)) 11)
+        ((and (= on 0) (or (not (= safety-fault 0)) (= motor-live 0)
+                           (> (secs-since motor-seen) 0.1))) 12)
+        ((and (= on 0) (= rv-btn 1)) 7)
+        (t {
+            (drive-clear)
+            (setq rv-dir 1)
+            (setq park-on on)
+            (setq throttle-on (if (= on 1) 0 1))
+            0
+        }))
+})
+(defun ride-input-fault () {
+    (setq safety-fault 12)
+    (setq park-on 1) (setq throttle-on 0)
+    (drive-clear)
+    (setq rv-dir 0)
 })
 ; Profiles scale the current limit instead of overwriting it: Motor Current Max
 ; in VESC Tool stays the master value (applied live, no LISP restart) and each
@@ -125,6 +188,8 @@
 
 ; Speed is Motor Settings' business now. apply-profile does not touch
 ; max-speed at all, so a mode change no longer moves the speed limit.
+; Mode selection only changes the current ceiling: no motor tone or drive
+; command. Motor tones energize the windings even with the throttle released.
 (defun apply-profile (profile-index) {
     (let ((sc (rm-desired-scale))) {
         (conf-set 'l-current-max-scale sc)
@@ -132,22 +197,6 @@
         (print (str-merge "Mode " (to-str (+ profile-index 1)) ": "
                           (to-str (/ (rm-amps-of profile-index) 10.0)) " A req, "
                           (to-str (/ (rm-effective-dA) 10.0)) " A effective"))
-    })
-    (if (= first-profile-init 0) {
-        (let ((beep-freq (if (= profile-index 0) {
-            500
-        } {
-            (if (= profile-index 1) {
-                750
-            } {
-                1000
-            })
-        }))) {
-            (foc-play-tone 0 beep-freq 10)
-            (spawn 150 play-stop)
-        })
-    } {
-        (setq first-profile-init 0)
     })
 })
 ; ---- ride config persistence ----------------------------------------------
@@ -190,6 +239,26 @@
 (defun rm-apply-reverse-speed ()
     (if (= rm-rev-en 1)
         (conf-set 'min-speed (/ (/ rm-rev-speed 10.0) 3.6))))
+
+; Probe the requested reverse speed before committing a SET transaction.
+; `min-speed` is hardware/firmware dependent. Previously an error here killed
+; panel-event-loop before rm-send-config ran, leaving the P4 stuck on
+; "Saving to VESC..." with no ACK. Keep the error inside this call and let the
+; transaction return UNSUPPORTED_HARDWARE instead.
+(defun rm-try-reverse-speed (enabled speed-dkmh)
+    (match (trap
+        (if (= enabled 1)
+            (conf-set 'min-speed (/ (/ speed-dkmh 10.0) 3.6))
+            t))
+        ((exit-ok (? value)) t)
+        ((exit-error (? error)) {
+            (print (str-merge "ride SET: min-speed failed: " (to-str error)))
+            nil
+        })
+        (_ {
+            (print "ride SET: min-speed failed")
+            nil
+        })))
 (defun rm-load () {
     ; eeprom-read-i answers nil for a slot that was never written, and `=` on
     ; nil is a type error, not false. On a board that has never stored a ride
@@ -237,12 +306,6 @@
 })
 ; pin-rx is configured inside monitor-reverse, under spawn-trap. Doing it here
 ; as well would put an unguarded call back at load time and undo the guard.
-(gpio-configure 'pin-tx 'pin-mode-in-pu)
-; Cruise is a PI speed controller with a CURRENT output inside the motor
-; arbiter — not the firmware speed PID. No set-rpm mode switch, so engaging
-; can't jerk: the integrator is seeded with the actual motor current and the
-; loop keeps commanding current smoothly. (De)activation just flips state; the
-; arbiter (motor-control-loop) does everything else.
 ; Both of these are kept as the names their callers already use -- the BLE
 ; helper's cmd=2 and the quick panel's radio group -- but neither decides
 ; anything any more. Every mode change funnels through ride-select-mode so the
@@ -255,27 +318,55 @@
 ; read the pin every 50 ms and took any 1->0 it happened to catch, so a bouncing
 ; contact could land two mode changes from one press. Four stable 10 ms reads is
 ; 40 ms of agreement before an edge counts.
-(defun monitor-tx-button () {
-    (let ((raw 1) (count 0))
-    (loopwhile t {
-        (let ((now-state (gpio-read 'pin-tx))) {
-            (if (= now-state raw)
-                (if (< count 4) (setq count (+ count 1)))
-                { (setq raw now-state) (setq count 0) })
-            (if (and (= count 4) (not (= raw tx-button-state))) {
-                ; Falling edge = pressed (active-low).
-                (if (= raw 0) (ride-select-next))
-                (setq tx-button-state raw)
+(defun mode-button-step (raw) {
+    (if (= raw tx-raw)
+        (if (< tx-count 4) (setq tx-count (+ tx-count 1)))
+        { (setq tx-raw raw) (setq tx-count 0) })
+    (if (>= tx-count 4) {
+        (if (= tx-raw 1) {
+            (if (and (= tx-button-state 0) (= tx-seen-release 1) (= tx-long 0)) {
+                (if (= park-on 1)
+                    (if (= tx-exit-ok 1) (setq rm-fault (ride-set-park 0)))
+                    (ride-select-next))
+            })
+            (setq tx-seen-release 1)
+        } {
+            (if (= tx-button-state 1) {
+                (setq tx-pressed-at (systime))
+                (setq tx-long 0)
+                (setq tx-exit-ok (if (and (ride-stopped) (ride-throttle-idle)) 1 0))
+                (setq tx-park-ok tx-exit-ok)
+            })
+            (if (and (= tx-seen-release 1) (= tx-long 0)
+                     (>= (secs-since tx-pressed-at) 1.0)) {
+                ; Consume the long press even if refused; release never selects.
+                (setq tx-long 1)
+                (if (= tx-park-ok 1) (setq rm-fault (ride-set-park 1)))
             })
         })
+        (setq tx-button-state tx-raw)
+    })
+})
+(defun monitor-tx-button () {
+    (gpio-configure 'pin-tx 'pin-mode-in-pu)
+    (loopwhile t {
+        (mode-button-step (gpio-read 'pin-tx))
+        (setq tx-seen (systime)) (setq tx-live 1)
         (sleep 0.01)
-    }))
+    })
 })
 ; Config first, then the profile that uses it. Boot always lands on mode 0
 ; whatever was in force before: waking up in the fastest mode is not a
 ; behaviour anyone asked for.
 (rm-load)
-(rm-apply-reverse-speed)
+; A persisted reverse setting must not be able to kill the whole script during
+; boot on a build that does not expose `min-speed`. Fail closed and keep the
+; panel/current modes alive so the rider can disable or correct the setting.
+(if (not (rm-try-reverse-speed rm-rev-en rm-rev-speed)) {
+    (setq rm-fault 9)
+    (setq rm-rev-en 0)
+    (print "ride config: reverse disabled; min-speed unsupported")
+})
 (apply-profile 0)
 (defun pu8  (v) { (bufset-u8  pbuf pi v) (setq pi (+ pi 1)) })
 (defun pi32 (v) { (bufset-i32 pbuf pi (to-i32 v)) (setq pi (+ pi 4)) })
@@ -313,11 +404,8 @@
 })
 (defun panel-send-ui (reply-id) {
     (setq pi 0)
-    (pu8 0x56) (pu8 0x50) (pu8 0x81) (pu8 1) (pu8 6)
-    (pu8 1) (pu8 1) (pstr "Throttle") (pu8 (if (= throttle-on 1) 1 0))
-    (pu8 4) (pu8 2) (pstr "Beep")
-    (pu8 5) (pu8 3) (pstr "Beep Vol")
-    (pi32 0) (pi32 50000) (pi32 5000) (pi32 (* beep-vol 1000)) (pstr "")
+    (pu8 0x56) (pu8 0x50) (pu8 0x81) (pu8 1) (pu8 4)
+    (pu8 6) (pu8 2) (pstr "Park")
     ; Mode radio group (ids 10..12) — exactly one is lit, tapping a row selects
     ; it. The labels are deliberately plain: they used to read "Slow 5 km/h"
     ; and friends, which stopped being true the moment the limits became
@@ -329,9 +417,7 @@
 })
 (defun panel-send-state (reply-id) {
     (setq pi 0)
-    (pu8 0x56) (pu8 0x50) (pu8 0x82) (pu8 5)
-    (pu8 1) (pi32 (* (if (= throttle-on 1) 1 0) 1000))
-    (pu8 5) (pi32 (* beep-vol 1000))
+    (pu8 0x56) (pu8 0x50) (pu8 0x82) (pu8 3)
     (pu8 10) (pi32 (* (if (= current-profile 0) 1 0) 1000))
     (pu8 11) (pi32 (* (if (= current-profile 1) 1 0) 1000))
     (pu8 12) (pi32 (* (if (= current-profile 2) 1 0) 1000))
@@ -352,42 +438,88 @@
     (pi32 (* (rm-effective-dA) 1000))
     (send-data pbuf 2 reply-id)
 })
-; Master enable is just a flag now — the motor arbiter owns all output and
-; coasts (set-current 0) while throttle-on = 0. No app juggling needed.
-(defun panel-set-throttle (on) {
-    (if (= on 0) {
-        (setq throttle-on 0)
+; Sequenced status is a separate message so legacy 0x89 cannot masquerade as
+; a response from the newly selected ESC. The P4 checks the echoed poll token.
+(defun rm-send-status-seq (reply-id seq) {
+    (setq pi 0)
+    (pu8 0x56) (pu8 0x50) (pu8 0x8D) (pu16 seq)
+    (pu16 rm-revision) (pu8 current-profile)
+    (pu16 (rm-amps-of current-profile)) (pu16 (rm-effective-dA))
+    (pu16 rm-esc-max)
+    (pu8 (if (= rv-dir -1) 255 rv-dir))
+    (pu8 rv-btn) (pu8 rv-armed) (pu8 rm-persist) (pu8 rm-fault)
+    (bufcpy status-seq-buf 0 pbuf 0 19)
+    (send-data status-seq-buf 2 reply-id)
+})
+; Dedicated safety protocol v1. Old DASH layout is not reinterpreted.
+; State: 0 P, 1 forward, 2 reverse ready, 3 reverse active, 4 interlock, 5 fault.
+(defun ride-safety-state ()
+    (cond
+        ((or (not (= safety-fault 0)) (= motor-live 0)
+             (> (secs-since motor-seen) 0.1)) 5)
+        ((= park-on 1) 0)
+        ((and (= rv-armed 1) (= rv-dir -1)) 3)
+        ((= rv-armed 1) 2)
+        ((not (= rv-dir 1)) 4)
+        (t 1)))
+(defun safety-send (reply-id seq msg result) {
+    (bufset-u8 safety-buf 0 0x56) (bufset-u8 safety-buf 1 0x50)
+    (bufset-u8 safety-buf 2 msg) (bufset-u8 safety-buf 3 1)
+    (bufset-u8 safety-buf 4 (mod (/ seq 256) 256))
+    (bufset-u8 safety-buf 5 (mod seq 256))
+    (bufset-u8 safety-buf 6 (ride-safety-state))
+    (bufset-u8 safety-buf 7 current-profile) (bufset-u8 safety-buf 8 result)
+    (send-data safety-buf 2 reply-id)
+})
+(defun safety-query (reply-id seq) {
+    (setq safety-owner reply-id) (setq safety-token seq)
+    (setq safety-token-at (systime)) (setq safety-consumed 0)
+    (safety-send reply-id seq 0x8B rm-fault)
+})
+(defun safety-set (reply-id seq on) {
+    (if (and (= reply-id safety-owner) (= seq safety-token)
+             (< (secs-since safety-token-at) 1.0)) {
+        (if (= safety-consumed 0) {
+            (setq safety-consumed 1)
+            (setq safety-result (ride-set-park on))
+            (setq rm-fault safety-result)
+        })
+        (safety-send reply-id seq 0x8C safety-result)
+    } (safety-send reply-id seq 0x8C 14))
+})
+
+; A source must supply a fresh zero after leaving P/interlock before it may
+; supply assist. Zeros from another CAN source cannot unlock this source.
+(defun ride-pas-input (reply-id amps) {
+    (if (or (= park-on 1) (not (= rv-dir 1)) (not (= safety-fault 0))) {
+        (setq pas-amps 0.0) (setq pas-src -1) (setq pas-ready-src -1)
     } {
-        (setq throttle-on 1)
+        (if (<= amps 0.0) {
+            (if (or (= pas-src -1) (= pas-src reply-id)
+                    (> (secs-since pas-seen) 0.4)) {
+                (setq pas-amps 0.0) (setq pas-src -1)
+                (setq pas-ready-src reply-id) (setq pas-seen (systime))
+            })
+        } {
+            (if (and (= pas-ready-src reply-id)
+                     (< (secs-since pas-seen) 0.4)
+                     (or (= pas-src -1) (= pas-src reply-id))) {
+                (setq pas-amps amps) (setq pas-src reply-id)
+                (setq pas-seen (systime))
+            })
+        })
     })
 })
-(defun two-beeps () {
-    (foc-play-tone 0 800 beep-vol)
-    (sleep 0.1)
-    (foc-play-stop)
-    (sleep 0.06)
-    (foc-play-tone 0 900 beep-vol)
-    (sleep 0.1)
-    (foc-play-stop)
-    (sleep 0.3)
-    (foc-play-tone 0 800 beep-vol)
-    (sleep 0.1)
-    (foc-play-stop)
-    (sleep 0.06)
-    (foc-play-tone 0 900 beep-vol)
-    (sleep 0.1)
-    (foc-play-stop)
-})
-; Run the sequence in its own thread so the sleeps don't block panel-event-loop.
-(defun panel-beep () (spawn 150 two-beeps))
+; Master enable is just a flag now — the motor arbiter owns all output and
+; coasts (set-current 0) while throttle-on = 0. No app juggling needed.
+; Legacy unsequenced enable/toggle packets cannot unlock P. Use MODE or the
+; new one-shot safety command. Motor tones are removed from the driving app.
+(defun panel-set-throttle (on)
+    (setq rm-fault (if (= on 0) (ride-set-park 1) 13)))
 (defun panel-action (cid val) {
     (cond
         ((= cid 1) (panel-set-throttle (if (> val 0.5) 1 0)))
-        ((= cid 4) (panel-beep))
-        ((= cid 5) {
-            (setq beep-vol (to-i32 val))
-            (setq beep-vol-dirty 1)
-        })
+        ((= cid 6) (setq rm-fault (ride-set-park 1)))
         ; Profile radio group: the row identifies the profile, so val is ignored
         ; (tapping the already-lit row sends 0 and panel-set-profile no-ops).
         ((= cid 10) (panel-set-profile 0))
@@ -408,6 +540,7 @@
 ;   [7..8] a0 [9..10] a1 [11..12] a2
 ;   [13] reverse_enabled [14..15] rev_speed [16..17] rev_current   = 18 bytes
 (defun rm-apply-set (data reply-id seq) {
+    (print (str-merge "ride SET rx seq=" (to-str seq)))
     (let ((res
         (cond
             ((< (buflen data) 18) 1)
@@ -430,6 +563,10 @@
                     ; Asking for reverse on a board whose button never came up
                     ; is refused rather than stored and quietly ignored later.
                     ((and (= re 1) (= rv-hw-ok 0)) 9)
+                    ; A missing/unsupported min-speed binding used to throw
+                    ; here and prevent every ACK after Save. Probe it under a
+                    ; trap before changing the stored ride configuration.
+                    ((not (rm-try-reverse-speed re rs)) 9)
                     (t {
                         (setq rm-a0 a0) (setq rm-a1 a1) (setq rm-a2 a2)
                         (setq rm-rev-en re)
@@ -439,7 +576,6 @@
                         ; Apply before persisting: the rider feels the change on
                         ; the next twist whether or not flash cooperates.
                         (apply-profile current-profile)
-                        (rm-apply-reverse-speed)
                         (setq rm-persist 1)
                         0
                     })))))))
@@ -447,6 +583,8 @@
             ; A success clears the old refusal. Leaving it set showed a stale
             ; error beside a config that had just saved cleanly.
             (setq rm-fault res)
+            (print (str-merge "ride SET ack seq=" (to-str seq)
+                              " result=" (to-str res)))
             (rm-send-config reply-id seq res)
         })
 })
@@ -456,7 +594,7 @@
 ; direction guard in one place is the point -- it used to live only in the TX
 ; monitor, so the other three could still change mode mid-reverse.
 (defun ride-select-mode (idx) {
-    (if (and (= rv-dir 1) (>= idx 0) (< idx num-profiles)
+    (if (and (= safety-fault 0) (= rv-dir 1) (>= idx 0) (< idx num-profiles)
              (not (= idx current-profile))) {
         (setq current-profile idx)
         (apply-profile current-profile)
@@ -475,29 +613,9 @@
                 ((= msg 0x01) (panel-send-ui reply-id))
                 ((= msg 0x03) (panel-send-state reply-id))
                 ((= msg 0x04) (panel-send-dash reply-id))
-                ((= msg 0x05) {
-                    ; Pedal-assist setpoint (fire-and-forget, no reply). i32 mA at
-                    ; byte 4 (after magic[0,1], msg[2], reply-id[3]).
-                    ;
-                    ; SOURCE LOCK: more than one node may stream setpoints (the
-                    ; P4 display's on-device PAS idles at 0 A, 20 Hz, forever on
-                    ; firmware older than 1.3.1). Interleaved with a real assist
-                    ; current those zeros chop pas-amps into 3→0→3… and the
-                    ; motor jerks. So: lock onto whoever sent the last NON-ZERO
-                    ; setpoint (reply-id = the sender's CAN id) and ignore other
-                    ; senders until that source goes silent/zero; a zero from the
-                    ; locked source releases the lock, staleness (0.4 s) too.
-                    (let ((amps (/ (bufget-i32 data 4) 1000.0)))
-                        (if (or (= pas-src reply-id)
-                                (= pas-src -1)
-                                (> (secs-since pas-seen) 0.4))
-                            {
-                                (setq pas-amps amps)
-                                (setq pas-seen (systime))
-                                (setq pas-src (if (> amps 0.0) reply-id -1))
-                            }
-                            nil))
-                })
+                ((= msg 0x05)
+                    (if (= (buflen data) 8)
+                        (ride-pas-input reply-id (/ (bufget-i32 data 4) 1000.0))))
                 ((= msg 0x06) {
                     ; Atomic throttle toggle from the BLE helper (its GUI /
                     ; throttle_ctl): flip our own state — the sender never
@@ -521,6 +639,15 @@
                 ; the mode straight back and make the physical button look
                 ; broken.
                 ((= msg 0x0A) (rm-send-status reply-id))
+                ((= msg 0x0D)
+                    (if (= (buflen data) 6)
+                        (rm-send-status-seq reply-id (bufget-u16 data 4))))
+                ((= msg 0x0B)
+                    (if (= (buflen data) 6)
+                        (safety-query reply-id (bufget-u16 data 4))))
+                ((= msg 0x0C)
+                    (if (= (buflen data) 7)
+                        (safety-set reply-id (bufget-u16 data 4) (bufget-u8 data 6))))
                 ((= msg 0x09) {
                     ; Changing the forward profile while rolling is allowed --
                     ; it only re-scales limits -- but changing DIRECTION is not,
@@ -529,7 +656,7 @@
                         (panel-set-profile (bufget-u8 data 6)))
                     (rm-send-status reply-id)
                 })
-                ((= msg 0x02)
+                ((and (= msg 0x02) (= (buflen data) 9))
                     (let ((cid (bufget-u8 data 4))
                           (val (/ (bufget-i32 data 5) 1000.0))) {
                         (panel-action cid val)
@@ -617,12 +744,12 @@
     (let ((sp  (get-speed))            ; m/s, signed
           (thr (get-adc-decoded 0))
           (brk (get-adc-decoded 1))) {
-        (if (or (= rm-rev-en 0) (= rv-hw-ok 0) (= rv-seen-release 0)) {
-            ; Feature off, no pin, or the button has been held since boot.
-            (setq rv-dir 1) (setq rv-armed 0) (setq rv-brake-ticks 0)
+        (if (or (= park-on 1) (not (= safety-fault 0))) {
+            (setq rv-armed 0) (setq rv-brake-ticks 0)
         } {
             (cond
-                ((= rv-btn 0) {
+                ((or (= rm-rev-en 0) (= rv-hw-ok 0)
+                     (= rv-seen-release 0) (= rv-btn 0)) {
                     ; Released. Interlock until the bike has actually stopped
                     ; and the throttle is back at rest, so a rider still rolling
                     ; backwards cannot be handed forward torque.
@@ -632,9 +759,13 @@
                             (setq rv-dir 1)
                             (setq rv-dir 0)))
                 })
-                ((> sp 0.083) {
-                    ; Pressed while still moving forward: interlock only. This
-                    ; is the case that must never produce negative current.
+                ; Already authorized reverse is allowed to move backward.
+                ; Never use the standstill arming test to revoke valid motion.
+                ((and (= rv-armed 1) (<= sp 0.083)) {
+                    (if (<= brk 0.05) (setq rv-dir -1))
+                })
+                ((> (abs sp) 0.083) {
+                    ; New arming is prohibited while rolling in EITHER direction.
                     (setq rv-armed 0) (setq rv-brake-ticks 0)
                     (setq rv-dir 0)
                 })
@@ -664,6 +795,7 @@
         (if (not (= rv-dir 1)) {
             (setq pas-amps 0.0)
             (setq pas-src -1)
+            (setq pas-ready-src -1)
         })
     })
 })
@@ -699,21 +831,18 @@
                 (if (= rv-btn-raw 0) (setq rv-seen-release 1))
             })
         })
-        (reverse-step)
+        (setq rv-seen (systime))
         (sleep 0.01)
     })
 })
-; Cruise output: PI on ERPM error → current. Integrator anti-windup-clamped to
-; the live limit (l-current-max × profile scale, both read fresh each tick so a
-; VESC Tool write or profile switch applies immediately; the firmware control
 ; THE motor arbiter — the only place that commands the motor. The native ADC
 ; app stays configured (its thread keeps decoding the throttle/brake pots for
 ; get-adc-decoded, and VESC Tool keeps its calibration UI) but its OUTPUT is
-; suppressed with a rolling 1.5 s disable that this loop keeps extending. If
-; this script ever dies: motor stops via the motor-command timeout (every
-; set-* here feeds it), and ~1.5 s later the stock ADC throttle comes back —
-; the bike stays rideable (without PAS) instead of bricking.
-; Priority: master-off > brake > direction interlock/reverse > throttle >
+; suppressed indefinitely. ADC control type NONE must also be persisted before
+; deployment, so reboot/script failure cannot hand propulsion to native ADC.
+; The configured ESC timeout must be verified on the target with motor power
+; inhibited; optOffDelay on set-current is NOT a command watchdog timeout.
+; Priority: fault stop > brake > P > direction interlock/reverse > throttle >
 ; PAS > coast. Direction outranks the throttle because the whole point
 ; of the interlock is that a twisted throttle must NOT produce forward torque
 ; while the bike is in or leaving reverse; it sits under the brake because the
@@ -731,9 +860,15 @@
             (setq rm-scale-applied sc)
         }))
 })
-(defun motor-control-loop () {
-    (loopwhile t {
-        (app-disable-output 1500)
+(defun motor-control-step () {
+        (app-disable-output -1)
+        (if (or (not (native-input-only))
+                (not (app-adc-range-ok))
+                (and (= tx-live 1) (> (secs-since tx-seen) 0.1))
+                (and (= rm-rev-en 1) (= rv-hw-ok 1)
+                     (> (secs-since rv-seen) 0.1)))
+            (ride-input-fault))
+        (reverse-step)
         (sync-current-scale)
         (let ((thr   (get-adc-decoded 0))
               (brake (get-adc-decoded 1))) {
@@ -745,9 +880,8 @@
             ; brk-rel > 0), so releasing throttle or brake ramps down smoothly
             ; instead of stepping the current to 0.
             (cond
-                ((= throttle-on 0) {          ; panel master switch — coast
-                    (setq out-rel 0.0)
-                    (setq brk-rel 0.0)
+                ((not (= safety-fault 0)) {
+                    (drive-clear)
                     (set-current 0) })
                 ((or (> brake 0.05) (> brk-rel 0.001)) {  ; 1. brake
                     (setq out-rel 0.0)        ; throttle cut is fine under brake
@@ -761,6 +895,9 @@
                     ; space actually needs.
                     (setq rv-rel (slew rv-rel 0.0 (ramp-pos) (ramp-neg)))
                     (brake-out brake) })      ; full range, never profile-scaled
+                ((or (= park-on 1) (= throttle-on 0)) {
+                    (drive-clear)
+                    (set-current 0) })
                 ((or (not (= rv-dir 1)) (> rv-rel 0.001))  ; 2. direction
                     ; Reverse, or the interlock ramping reverse current back to
                     ; zero. Selected while rv-rel is still tailing off so the
@@ -776,7 +913,23 @@
                 (t                            ; 5. coast
                     (set-current 0)))
         })
+        (setq motor-seen (systime)) (setq motor-live 1)
+})
+(defun motor-control-loop () {
+    (loopwhile t {
+        (motor-control-step)
         (sleep ctl-dt)
+    })
+})
+; Independent supervisor catches an arbiter exception/hang while the VM still
+; runs. Total VM failure relies on native NONE plus the ESC command timeout.
+(defun motor-supervisor () {
+    (loopwhile t {
+        (if (and (= motor-live 1) (> (secs-since motor-seen) 0.1)) {
+            (ride-input-fault)
+            (set-current 0)
+        })
+        (sleep 0.02)
     })
 })
 (defun panel-on-shutdown () {
@@ -811,11 +964,11 @@
 ; id/data configured per button in the helper GUI. Command = the data bytes
 ; read as a big-endian u16 (single-byte frames work too):
 ;   CAN ID 0x123, data 00 01  (button A) -> toggle the throttle master switch
-;   CAN ID 0x123, data 00 02  (button B) -> switch speed profile (mode);
-;                                           apply-profile beeps per profile
+;   CAN ID 0x123, data 00 02  (button B) -> switch current mode, silently
 ;   anything else             -> just printed; add your commands below
 (def helper-btn-id 0x123)
 (defun proc-helper-btn (data) {
+    (if (> (buflen data) 0)
     (let ((cmd (if (>= (buflen data) 2)
                    (bufget-u16 data 0)
                    (bufget-u8 data 0)))) {
@@ -831,12 +984,12 @@
                                   (to-str current-profile)))
             })
             (t (print (str-merge "helper cmd " (to-str cmd)))))
-    })
+    }))
 })
 (defun panel-event-loop () {
     (loopwhile t {
         (recv ((event-data-rx . (? data)) (panel-handle data))
-              ((event-can-sid (? id) . (? data))
+              ((event-can-sid . ((? id) . (? data)))
                   (if (= id helper-btn-id) (proc-helper-btn data)))
               (event-shutdown               (panel-on-shutdown))
               (_ nil))
@@ -853,11 +1006,12 @@
 (event-enable 'event-data-rx)
 (event-enable 'event-shutdown)
 (spawn 150 persist-volumes-loop)
-(spawn 150 motor-control-loop)
+(spawn-trap 200 motor-control-loop)
+(spawn 150 motor-supervisor)
 ; Mode button. Spawned down here with the rest, not next to its definition:
 ; it reaches ride-select-next, which is bound further down the file, and a
 ; thread that starts before its callee is bound dies on the first press.
-(spawn 150 monitor-tx-button)
+(spawn-trap 150 monitor-tx-button)
 ; spawn-trap, not spawn: this thread owns the RX pin, and a gpio-configure that
 ; throws would otherwise take the whole script with it. Trapped, it kills this
 ; thread alone and leaves rv-hw-ok at 0 -- reverse then reports

@@ -87,6 +87,45 @@ static inline void dash_set_text_color(lv_obj_t *obj, lv_color_t c, lv_style_sel
  * exactly one place to know what the throttle is about to do. Every theme's
  * mode_text must handle it. */
 #define DASH_MODE_REVERSE 0xFFu
+#define DASH_MODE_PARK    0xFEu
+#define DASH_MODE_UNKNOWN 0xFDu
+#define DASH_GEAR_DIAMETER 40
+
+static inline uint32_t dashboard_gear_color(uint8_t mode)
+{
+    switch (mode) {
+    case 0: return 0x4ADE80;
+    case 1: return 0x60A5FA;
+    case 2: return 0xFFB347;
+    case DASH_MODE_REVERSE: return 0xFF667A;
+    case DASH_MODE_PARK: return 0xC4A5FF;
+    default: return 0x8A9499;
+    }
+}
+
+static inline void dashboard_gear_apply_color(lv_obj_t *label, uint8_t mode)
+{
+    const lv_color_t color = lv_color_hex(dashboard_gear_color(mode));
+    dash_set_text_color(label, color, LV_PART_MAIN);
+    if (lv_obj_get_style_border_color(label, LV_PART_MAIN).full != color.full)
+        lv_obj_set_style_border_color(label, color, LV_PART_MAIN);
+}
+
+/* Display only: permission/age checks belong to the telemetry consumer. */
+static inline const char *dashboard_gear_text(uint8_t mode)
+{
+    switch (mode) {
+    case 0: return "1";
+    case 1: return "2";
+    case 2: return "3";
+    case DASH_MODE_REVERSE: return "R";
+    case DASH_MODE_PARK: return "P";
+    default: return "-";
+    }
+}
+
+void dashboard_gear_circle_style(lv_obj_t *label, lv_coord_t center_x,
+                                 lv_coord_t center_y);
 
 typedef struct {
     void (*speed)(float kmh);

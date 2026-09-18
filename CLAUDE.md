@@ -72,6 +72,12 @@ BLE OTA thì qua app Flutter. Lần flash đầu bắt buộc USB hoặc Wi-Fi.
 
 ### Test
 
+Interactive Windows simulator: launch outside the sandbox with the required
+tool approval, `-WindowStyle Normal`, and `SDL_VIDEODRIVER=windows`.
+Sandboxed launch previously created a responsive but user-invisible window;
+the user confirmed visibility after relaunch outside the sandbox. Build and
+headless tests may remain sandboxed. See `docs/SIMULATOR_WINDOWS_LAUNCH.md`.
+
 Không có test on-target. Có 2 bộ test chạy trên host:
 
 ```bash

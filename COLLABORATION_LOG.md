@@ -28,6 +28,175 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-09-18 - Codex - Checkpoint shared P/R branch for remote handoff
+- Scope: user requested committing and pushing the current shared branch to
+  origin; includes the accumulated collaborator changes, not solely this turn.
+- Checks: working-tree inventory and diff whitespace checks passed; latest
+  Lisp host test 13/13 passed. Earlier host/UI results are recorded below.
+- Status: preparing commit on `fix/gear-circle-park-reverse` and normal push
+  to origin; remote success must be confirmed from Git output.
+- Handoff: not a hardware release. Merged images remain old; app build predates
+  the latest gear font/colors. Legacy `lisp/main.ru.lisp` and README still
+  contain cruise/beep behavior/descriptions; dead beep persistence and legacy
+  UI symbols also remain. Do not treat this checkpoint as full legacy cleanup.
+  Ignored build binaries are excluded from this commit.
+
+### 2026-09-18 - Codex - Larger gear characters and per-mode colors
+- Scope: user requested 1.5x gear text and distinct mode colors.
+- Files: `Super_VESC_Display/custom/{custom.c,dashboard_theme.h,theme_generic.c}`,
+  `Super_VESC_Display/lv_conf.h`, simulator `lv_conf.h` and `main.c`.
+- Changes: nominal font 20 -> 30 px, circle 32 -> 40 px retaining center;
+  shared text/border palette: 1 green, 2 blue, 3 orange, R red, P purple,
+  unknown gray. Palette is code-defined, not a new settings editor.
+- Checks: simulator rebuild and 36 gear cases across four themes pass,
+  including new font, font-fit and text/border color assertions; diff-check.
+  Closed only the two verified previous simulator PIDs and launched new
+  interactive preview outside sandbox. No firmware rebuild/flash this turn.
+- Status: complete; user visual review pending.
+
+### 2026-09-18 - Codex - Record invisible sandbox simulator window
+- Scope: user requested persistent instructions after confirming the simulator
+  became visible when launched outside the sandbox.
+- Files: `docs/SIMULATOR_WINDOWS_LAUNCH.md`, `AGENTS.md`, `CLAUDE.md`, this log.
+- Findings: sandbox process/window metadata indicated responsiveness without
+  user-visible UI; outside-sandbox Normal launch resolved the observed issue.
+  Exact Windows isolation mechanism was not established.
+- Checks: documentation diff and whitespace checks; no code changes or new
+  simulator launch needed for this documentation-only task.
+- Status: complete.
+- Handoff: interactive simulator launches must use approved outside-sandbox
+  execution; headless tests/builds may remain sandboxed. Verify visibility,
+  not merely process existence.
+
+### 2026-09-18 - Codex - Fix pre-hardware ride safety regressions
+- Scope: repaired the failures found by host preflight; preserved existing
+  uncommitted P/R implementation and collaborator changes.
+- Files: `components/vesc_can/vesc_ride_mode.c`, parser and ride headers;
+  `lisp/main.lisp`; `main/vesc_ui_updater.c`, `main/aa_overlay.c`,
+  new `main/ride_gear_state.h`; regression tests in `scripts/tests/` and
+  `scripts/test_lisp_safety.py`.
+- Changes: expire PARK while paused; separate TX/state locks; correlate queued
+  work with target generation and replies with sent sequence; sequenced STATUS
+  0x0D/0x8D, exact 19-byte Lisp payload; exact 9-byte safety payload. Dashboard
+  and AA reverse indication use fresh safety state, not legacy DASH interlock.
+- Checks: Lisp limited host evaluator 13/13; transport mock 53/53; parser and
+  freshness 2532/2532; legacy parser 13 groups; gear mapping 81/81; simulator
+  build and 36 structural gear cases pass. JC4880 firmware build passes,
+  app 0x43aa90 bytes, 15% partition free. No flash or motor actuation.
+- Status: reported host failures fixed. These are not real LispBM, scheduler,
+  CAN timing or hardware safety certification. Pair new firmware with new Lisp.
+- Handoff: app binary rebuilt in `build_jc4880/`; merged images were NOT
+  regenerated. Hardware inhibit/bench validation remains required.
+
+### 2026-09-17 - Codex - Plan P/R implementation tasks and hardware test gates
+- Scope: requested planning only; reviewed current Lisp motor/reverse paths,
+  DASH validity and target-ID routing, then documented tasks T0–T11, host/UI
+  cases and G0–G3 gates from inhibited hardware through controlled riding.
+- Files: added `docs/RIDE_GEAR_PARK_TASKS_TEST_PLAN.md`; linked it from
+  `docs/RIDE_GEAR_PARK_UI_PLAN.md`; updated this log.
+- Findings: ADC fallback after Lisp loop failure, RX monitor stale authority,
+  signed standstill check, stale DASH, target routing, master-off/brake ordering
+  and manual motor tone are explicit blockers for a reliable P implementation.
+- Checks: source review and documentation checks only; no runtime test,
+  implementation, build, flash or hardware actuation in this turn.
+- Status: planning complete; all new test cases remain NOT RUN.
+- Handoff: FE tasks to Codex, BE tasks proposed for Claude; assignments are a
+  handoff, not evidence work has started. Establish ESC-specific inhibit and
+  measured acceptance limits before any powered fault test. Preserve the
+  existing dirty changes on `fix/gear-circle-park-reverse`.
+
+### 2026-09-17 - Codex - Record gear-circle/P plan and create feature branch
+- Scope: user requested a Markdown record and a new branch for the P/R UI work.
+- Files: added `docs/RIDE_GEAR_PARK_UI_PLAN.md`; updated this log. Recorded UI,
+  proposed transitions, Dat Bike ERA reference, FE/BE responsibilities and tests.
+- Branch: created and switched from `develop` at the current HEAD to
+  `fix/gear-circle-park-reverse`, preserving all existing uncommitted work.
+- Checks: verified active branch and working-tree status; `git diff --check`.
+  Runtime tests/build omitted because this task only records the plan and
+  creates the branch. No P implementation, commit, push or flash was performed.
+- Status: complete for documentation/branch preparation.
+- Handoff: Claude and Codex share this branch in the same working tree. Use
+  the plan for implementation; preserve pre-existing Lisp, transport, simulator
+  and bring-up edits. Proposed P/interlock semantics are not existing behavior.
+
+### 2026-09-17 - Codex - Silent current-mode selection, confirm cruise removed
+- Scope: user requested removal of throttle hold and motor excitation when
+  changing modes. Current Lisp already has no cruise controller; removed stale
+  cruise PI comments and the motor tone in `apply-profile`, plus its unused
+  `first-profile-init` state and `play-stop` helper. TX, panel, SELECT, helper,
+  boot and config Save now apply current limits without the mode tone.
+- Files: `lisp/main.lisp`, `docs/RIDE_MODE_V2_BRINGUP.md`, this log.
+- Checks: comment/string-aware delimiter check passed; static traversal of nine
+  mode-path functions found no motor-output/tone/spawn calls; no cruise function
+  or removed tone state remains. `git diff --check` passed. Flutter/Dart are not
+  available on PATH, so the official Lisp linter was not run. No VESC hardware
+  execution or firmware build/flash was performed.
+- Status: source change complete; hardware verification pending.
+- Handoff: upload the updated `lisp/main.lisp` separately to VESC. Manual panel
+  Beep still energizes the motor; throttle ramps, PAS and reverse remain as
+  before. Changing modes under throttle/PAS still changes the current ceiling.
+  The earlier reverse safety findings remain unresolved. Preserved existing
+  Lisp SET/min-speed traps and CAN event-pattern edits, transport changes,
+  simulator changes and previous log entries belonging to collaborators.
+
+### 2026-09-06 10:20 +07:00 - Codex - Hardware bring-up safety gate
+- Scope: re-check the current HEAD before physical testing and classify which
+  tests may run now. No source fix was made.
+- Files: inspected `docs/RIDE_MODE_V2_BRINGUP.md`,
+  `docs/BMS_HARDWARE_BRINGUP.md`, `lisp/main.lisp`, `main/main.c`, the BLE
+  central clients/host configuration, current Git state, and the existing
+  jc4880 build artifacts.
+- Checks: confirmed the two reverse blockers from the 2026-09-05 audit are
+  still present (`sp > 0.083` instead of absolute standstill, and no watchdog
+  after the RX monitor sets `rv-hw-ok=1`). Confirmed Ride Mode is still omitted
+  from the live target-ID callback, cadence still connects with
+  `BLE_HS_FOREVER`, and NimBLE still has three connection slots. The merged
+  jc4880 image exists and was built 2026-09-02; existence does not clear these
+  runtime hazards. `git diff --check` passed before this log entry.
+- Status: observation
+- Handoff: BMS read-only bring-up may proceed with cadence unbound, the JK
+  phone app closed, one phone BLE peer, and readings trusted only while LIVE
+  with age <5 s. Mode testing may proceed only on a secured wheel-off-ground
+  stand after temporarily lowering the ESC master motor/brake/battery limits.
+  Reverse must remain wheel-off-ground and must not proceed to a road test
+  until the two Lisp safety defects are fixed and re-reviewed. Do not change
+  target VESC ID during testing; save once, wait for EEPROM completion, then
+  reboot to verify persistence.
+
+### 2026-09-05 11:25 +07:00 - Codex - Read-only BMS / Ride Mode flow audit
+- Scope: audit the current BMS BLE-to-UI flow and Ride Mode v2/reverse
+  Lisp-to-CAN-to-dashboard flow. No source fix was made in this pass.
+- Files: inspected `lisp/main.lisp`, `main/ble_bms_client.c`,
+  `main/ble_cadence_client.c`, `main/ble_host.c`, `main/main.c`,
+  `components/bms/*`, `components/vesc_can/vesc_ride_mode.c`,
+  `components/vesc_can/vesc_lisp_panel.c`, `main/vesc_ui_updater.c`,
+  `Super_VESC_Display/custom/bms_view.c`,
+  `Super_VESC_Display/custom/ride_mode_screen.c`, simulator `Makefile`, and
+  the related host tests.
+- Checks: BMS JK parser host test passed (0 failures); Ride Mode wire/range
+  host test passed (0 failures). Standard simulator `make -j4` fails because
+  the Makefile does not include `components/vesc_can/include`; diagnostic
+  `make default EXTRA_CFLAGS=-I../../components/vesc_can/include -j4` passes.
+  Flutter/Lisp tests were not run because `flutter` is absent. `git diff
+  --check` passed. The pre-existing uncommitted `--bms-preview` edit in
+  `Super_VESC_Display/lvgl-simulator/main.c` was preserved.
+- Status: observation
+- Handoff: fix in safety-first order: (1) reverse standstill test uses
+  `sp > 0.083` and therefore permits arming while rolling backward; (2) a
+  post-configure RX GPIO exception kills `monitor-reverse` but leaves
+  `rv-hw-ok` and the last direction/button state live; (3) `on_target_id_changed`
+  never retargets Ride Mode, and the Ride Mode/panel target setters do not
+  invalidate old snapshots; (4) central BLE procedures have no shared arbiter:
+  cadence uses an infinite connect and can starve BMS, while three configured
+  connection slots cannot satisfy two peripheral peers + cadence + BMS; (5)
+  the BMS RX stream is neither flushed nor session-tagged on disconnect/rebind,
+  so queued bytes from the old pack can publish as the new session; (6) stale
+  BMS values remain fully coloured and readable as if live; (7) scan completion
+  does not update the modal, and CONNECT discards the scan name/RSSI; (8) the
+  BMS sleep timer is mapped but never rendered, and stale mode/speed copy
+  remains in the Ride Mode UI. Add state-machine/transport tests; current host
+  tests cover parsers only.
+
 ### 2026-08-30 16:55 +07:00 - Claude - Reverse state reaches the main dashboard; fixed a DASH bug I had just made
 - Scope: user asked whether the UI shows the arm state, then asked for R on the
   main mode pill. Answering the first question turned up a bug from `ae4f9ae`.

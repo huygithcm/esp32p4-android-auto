@@ -268,6 +268,7 @@ static void on_target_id_changed(uint8_t new_id)
     vesc_io_data_init(new_id, 150);
     vesc_lisp_code_set_target(new_id);
     vesc_lisp_panel_set_target(new_id);
+    vesc_ride_mode_set_target(new_id);
     ESP_LOGI(TAG, "VESC target ID → %u", new_id);
 }
 

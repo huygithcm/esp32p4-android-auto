@@ -60,7 +60,35 @@ typedef enum {
     VESC_RIDE_RESULT_STORAGE_ERROR,
     VESC_RIDE_RESULT_UNSUPPORTED_HARDWARE,
     VESC_RIDE_RESULT_TIMEOUT,
+    VESC_RIDE_RESULT_BRAKE_REQUIRED,
+    VESC_RIDE_RESULT_INPUT_FAULT,
+    VESC_RIDE_RESULT_PARK_REQUIRED,
+    VESC_RIDE_RESULT_STALE_REQUEST,
 } vesc_ride_result_t;
+
+typedef enum {
+    VESC_RIDE_SAFETY_PARK = 0,
+    VESC_RIDE_SAFETY_FORWARD,
+    VESC_RIDE_SAFETY_REVERSE_READY,
+    VESC_RIDE_SAFETY_REVERSE_ACTIVE,
+    VESC_RIDE_SAFETY_INTERLOCK,
+    VESC_RIDE_SAFETY_FAULT,
+} vesc_ride_safety_state_t;
+
+#define VESC_RIDE_SAFETY_VERSION 1u
+#define VESC_RIDE_SAFETY_FRESH_MS 1000u
+typedef struct {
+    bool valid;
+    vesc_ride_safety_state_t state;
+    uint8_t current_profile;
+    vesc_ride_result_t result;
+    uint16_t response_seq;
+    uint32_t epoch;
+    /* Command outcome is retained across subsequent read-only polls. */
+    uint16_t command_seq;
+    vesc_ride_result_t command_result;
+    bool command_pending;
+} vesc_ride_safety_t;
 
 typedef struct {
     uint32_t           epoch;
@@ -85,6 +113,7 @@ typedef struct {
 typedef struct {
     uint32_t epoch;
     bool     valid;
+    uint16_t response_seq; /* sequenced status only; legacy packets use zero */
     uint16_t config_revision;
     uint8_t  current_profile;
     /* The active mode's stored figure and what it actually clamps to right
@@ -110,6 +139,8 @@ void vesc_ride_mode_process_response(const uint8_t *data, unsigned int len);
 
 bool vesc_ride_mode_get_config(vesc_ride_config_t *out);
 bool vesc_ride_mode_get_status(vesc_ride_status_t *out);
+bool vesc_ride_mode_get_safety(vesc_ride_safety_t *out);
+bool vesc_ride_mode_set_park(bool park, uint16_t *seq_out);
 bool vesc_ride_mode_request_config(void);
 bool vesc_ride_mode_set_config(const vesc_ride_config_t *cfg,
                                uint16_t *seq_out);

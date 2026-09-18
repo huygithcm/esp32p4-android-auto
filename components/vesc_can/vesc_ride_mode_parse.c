@@ -17,6 +17,36 @@
 
 #include <string.h>
 
+bool vesc_ride_safety_reply_matches(uint16_t received, uint16_t pending,
+                                  uint32_t sent_ms, uint32_t now_ms)
+{
+    return pending != 0 && received == pending &&
+           (uint32_t)(now_ms - sent_ms) < VESC_RIDE_SAFETY_FRESH_MS;
+}
+
+bool vesc_ride_mode_parse_safety(const uint8_t *data, unsigned int len,
+                               vesc_ride_safety_t *out)
+{
+    if (!data || !out || len != VRM_SAFETY_MSG_LEN ||
+        data[0] != COMM_CUSTOM_APP_DATA || data[1] != VLP_MAGIC0 ||
+        data[2] != VLP_MAGIC1 ||
+        (data[3] != VRM_MSG_SAFETY && data[3] != VRM_MSG_PARK_ACK) ||
+        data[4] != VESC_RIDE_SAFETY_VERSION ||
+        data[7] > VESC_RIDE_SAFETY_FAULT ||
+        data[8] >= VESC_RIDE_MODE_COUNT ||
+        data[9] > VESC_RIDE_RESULT_STALE_REQUEST) return false;
+    vesc_ride_safety_t st = {0};
+    int32_t ind = 5;
+    st.response_seq = buffer_get_uint16(data, &ind);
+    if (!st.response_seq) return false;
+    st.state = (vesc_ride_safety_state_t)data[7];
+    st.current_profile = data[8];
+    st.result = (vesc_ride_result_t)data[9];
+    st.valid = true;
+    *out = st;
+    return true;
+}
+
 bool vesc_ride_mode_config_in_range(const vesc_ride_config_t *cfg,
                                     vesc_ride_result_t *why_out)
 {
@@ -97,7 +127,7 @@ bool vesc_ride_mode_parse_config(const uint8_t *data, unsigned int len,
     cfg.reverse_current_dA  = buffer_get_uint16(data, &ind);
     cfg.esc_current_max_dA  = buffer_get_uint16(data, &ind);
     cfg.persist_pending     = data[ind++] != 0;
-    cfg.last_result         = (result <= VESC_RIDE_RESULT_UNSUPPORTED_HARDWARE)
+    cfg.last_result         = (result <= VESC_RIDE_RESULT_STALE_REQUEST)
                               ? (vesc_ride_result_t)result
                               : VESC_RIDE_RESULT_OUT_OF_RANGE;
     /* valid means "these numbers are what the vehicle holds". A refusal still
@@ -117,11 +147,17 @@ bool vesc_ride_mode_parse_status(const uint8_t *data, unsigned int len,
     if (len < VRM_STATUS_MSG_LEN) return false;
     if (data[0] != COMM_CUSTOM_APP_DATA) return false;
     if (data[1] != VLP_MAGIC0 || data[2] != VLP_MAGIC1) return false;
-    if (data[3] != VRM_MSG_STATUS) return false;
+    const bool sequenced = data[3] == VRM_MSG_STATUS_SEQ;
+    if (data[3] != VRM_MSG_STATUS && !sequenced) return false;
+    if (sequenced && len != VRM_STATUS_SEQ_MSG_LEN) return false;
 
     int32_t ind = 4;
     vesc_ride_status_t st;
     memset(&st, 0, sizeof st);
+    if (sequenced) {
+        st.response_seq = buffer_get_uint16(data, &ind);
+        if (!st.response_seq) return false;
+    }
     st.config_revision      = buffer_get_uint16(data, &ind);
     st.current_profile      = data[ind++];
     st.requested_current_dA = buffer_get_uint16(data, &ind);

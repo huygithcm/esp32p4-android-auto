@@ -18,6 +18,7 @@
 #include "vesc_head2.h"
 #include "trip_log.h"
 #include "dashboard_theme.h"
+#include "ride_gear_state.h"
 
 /* GUI Guider's custom.h is generated C++-friendly but pure C. The
  * widget update functions live in Super_VESC_Display/custom/custom.c
@@ -147,36 +148,18 @@ static void push_rt_locked(void)
     update_uptime(trip_persist_get_uptime_ms());
 }
 
-/* Pull cruise-control + ride-profile state from the Lisp app. These used to
- * come from COMM_LISP_GET_STATS, but the VESC caps that monitor at 18 variables
- * and the script has more globals than that, so the values we need fell out of
- * the reported set. They now arrive over the panel's COMM_CUSTOM_APP_DATA
- * channel (DASH packet) which has no such limit — see vesc_lisp_panel.
- * get_dash returns false until the first reply, in which case the dashboard
- * keeps showing CC off, which is the right default. */
+/* Only the sequenced, freshness-checked safety snapshot owns the gear badge.
+ * Legacy DASH does not distinguish P or reverse readiness and is not used. */
 static void push_cruise_locked(void)
 {
-    vlp_dash_t d;
-    if (!vesc_lisp_panel_get_dash(&d)) {
-        /* No Lisp cruise/profile data — e.g. a plain VESC without lisp/main.lisp.
-         * Cruise + ride-mode simply don't exist there, so hide both widgets
-         * instead of leaving the "MODE" placeholder; the rest of the dashboard
-         * (speed/battery/… from COMM_GET_VALUES) works on any VESC regardless. */
-        hide_mode_text();
-        update_cruise_control_status(false);
-        return;
-    }
-
-    /* The mode pill doubles as the reverse warning. Armed OR already
-     * reversing both show R: from the rider's point of view they are the same
-     * situation -- the next twist of the throttle goes backwards -- and that
-     * has to be visible on the screen they are already looking at, not on a
-     * settings tab they would have to go find. */
-    if (d.reverse_armed || d.direction_state != 1) {
-        update_mode_text(DASH_MODE_REVERSE);
-    } else {
-        update_mode_text((uint8_t)d.current_profile);
-    }
+    vesc_ride_safety_t state = {0};
+    vesc_ride_mode_get_safety(&state);
+    const char gear = ride_gear_symbol(&state);
+    uint8_t mode = DASH_MODE_UNKNOWN;
+    if (gear == 'P') mode = DASH_MODE_PARK;
+    else if (gear == 'R') mode = DASH_MODE_REVERSE;
+    else if (gear >= '1' && gear <= '3') mode = (uint8_t)(gear - '1');
+    update_mode_text(mode);
 
     /* Cruise control no longer exists in the Lisp script, so its indicator is
      * held off rather than left showing whatever the last frame said. */
