@@ -1,0 +1,155 @@
+#pragma once
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Numeric values match the kbps payload — settings_wrapper.c maps them
+ * to/from a 0..3 dropdown index. */
+typedef enum {
+    CAN_SPEED_125_KBPS  = 125,
+    CAN_SPEED_250_KBPS  = 250,
+    CAN_SPEED_500_KBPS  = 500,
+    CAN_SPEED_1000_KBPS = 1000,
+} can_speed_t;
+
+typedef enum {
+    BATTERY_CALC_MODE_DIRECT = 0,
+    BATTERY_CALC_MODE_SMART  = 1,
+} battery_calc_mode_t;
+
+/* Loads cache from NVS. Idempotent — settings_ui_init() also calls this
+ * via settings_wrapper_init(), so order between main and UI doesn't matter. */
+void settings_init(void);
+
+uint8_t              settings_get_target_vesc_id(void);
+can_speed_t          settings_get_can_speed(void);
+uint8_t              settings_get_screen_brightness(void);
+uint8_t              settings_get_controller_id(void);
+float                settings_get_battery_capacity(void);
+battery_calc_mode_t  settings_get_battery_calc_mode(void);
+bool                 settings_get_show_fps(void);
+uint16_t             settings_get_wheel_diameter_mm(void);
+uint8_t              settings_get_motor_poles(void);
+float                settings_get_power_max_kw(void);
+bool                 settings_get_vesc_emulator(void);
+bool                 settings_get_aa_autoconnect(void);
+bool                 settings_get_use_imperial(void);
+bool                 settings_get_use_fahrenheit(void);
+bool                 settings_get_second_head_enabled(void);
+uint8_t              settings_get_second_head_id(void);
+/* Brightness drag gesture on the dashboard: the invisible full-screen slider
+ * that changes backlight when swiped. Default true. Disabling hides (and
+ * therefore deactivates — LVGL skips hidden objects in hit-testing) the
+ * slider on every theme that has one. */
+bool                 settings_get_brightness_gesture_enabled(void);
+/* Index into the dashboard-theme registry (see dashboard_theme.h). Default 0
+ * = cockpit. Callers must clamp against dashboard_theme_count() since the
+ * stored index could outrun the registry after a firmware downgrade. */
+uint8_t              settings_get_dashboard_theme(void);
+
+/* Boot-splash repeats: how many times the animated splash loops before the UI
+ * is revealed. 0 = splash disabled entirely. Default 1. */
+uint8_t              settings_get_splash_loops(void);
+
+/* Flip the display output 180° for upside-down mounting. Render-level:
+ * display_init picks the LVGL adapter rotation (90° vs 270°) from this at
+ * boot, and the AA-video / splash / overlay / touch paths follow via
+ * display_flip_active(). Takes effect on the NEXT reboot — the adapter's
+ * rotation cannot change at runtime. */
+bool                 settings_get_display_flip(void);
+
+/* Wall-clock API. RTC-only — relies on the vbat_experiment poke in
+ * main.c to keep LP domain alive on USB-unplug via the CR2032 on H8.
+ * If that experiment doesn't pan out on this silicon, time(NULL)
+ * resets to 0 on every cold boot. */
+uint32_t             settings_get_clock_secs_of_day(void);
+void                 settings_set_clock_secs_of_day(uint32_t secs_of_day);
+
+void settings_set_target_vesc_id(uint8_t id);
+void settings_set_can_speed(can_speed_t speed);
+void settings_set_screen_brightness(uint8_t brightness);
+void settings_set_controller_id(uint8_t id);
+void settings_set_battery_capacity(float capacity);
+void settings_set_battery_calc_mode(battery_calc_mode_t mode);
+void settings_set_show_fps(bool show);
+void settings_set_wheel_diameter_mm(uint16_t diameter_mm);
+void settings_set_motor_poles(uint8_t poles);
+void settings_set_power_max_kw(float power_max_kw);
+void settings_set_vesc_emulator(bool on);
+void settings_set_aa_autoconnect(bool on);
+void settings_set_use_imperial(bool on);
+void settings_set_use_fahrenheit(bool on);
+void settings_set_second_head_enabled(bool on);
+void settings_set_second_head_id(uint8_t id);
+void settings_set_brightness_gesture_enabled(bool on);
+void settings_set_dashboard_theme(uint8_t theme);
+void settings_set_splash_loops(uint8_t loops);
+void settings_set_display_flip(bool on);
+
+/* Debounced setters — update the RAM cache and fire any hot-apply callback
+ * immediately, but DO NOT touch NVS. The UI pairs them with the matching
+ * settings_persist_* call on a debounce timer, so rapid spinbox/slider
+ * activity doesn't issue an nvs_commit on every tick. Without this, the
+ * LVGL task spends ~100 ms per value-change in a flash write and starves
+ * touch_input of the LVGL lock ("Failed to acquire LVGL lock"). */
+void settings_set_target_vesc_id_volatile(uint8_t id);
+void settings_set_screen_brightness_volatile(uint8_t brightness);
+void settings_set_controller_id_volatile(uint8_t id);
+void settings_set_battery_capacity_volatile(float capacity);
+void settings_set_power_max_kw_volatile(float power_max_kw);
+void settings_set_second_head_id_volatile(uint8_t id);
+void settings_set_brightness_gesture_enabled_volatile(bool on);
+void settings_set_dashboard_theme_volatile(uint8_t theme);
+
+void settings_persist_target_vesc_id(void);
+void settings_persist_screen_brightness(void);
+void settings_persist_controller_id(void);
+void settings_persist_battery_capacity(void);
+void settings_persist_power_max_kw(void);
+void settings_persist_second_head_id(void);
+void settings_persist_brightness_gesture_enabled(void);
+void settings_persist_dashboard_theme(void);
+
+/* Hot-apply hooks: registered by main once the corresponding subsystem is
+ * up. settings_set_* fires the callback synchronously on the caller after
+ * persisting (UI thread for set-from-UI). NULL allowed.
+ *
+ * Wired today: CAN speed, screen brightness, target VESC ID, controller ID.
+ * Other setters just persist to NVS and are picked up on next boot. */
+typedef void (*settings_can_speed_cb_t)(int new_kbps);
+typedef void (*settings_brightness_cb_t)(uint8_t new_pct);
+typedef void (*settings_target_id_cb_t)(uint8_t new_id);
+typedef void (*settings_controller_id_cb_t)(uint8_t new_id);
+typedef void (*settings_aa_autoconnect_cb_t)(bool on);
+
+void settings_register_can_speed_cb(settings_can_speed_cb_t cb);
+void settings_register_brightness_cb(settings_brightness_cb_t cb);
+void settings_register_target_id_cb(settings_target_id_cb_t cb);
+void settings_register_controller_id_cb(settings_controller_id_cb_t cb);
+void settings_register_aa_autoconnect_cb(settings_aa_autoconnect_cb_t cb);
+
+/* Firmware-version strings shown on the Settings screen.
+ *
+ *   P4 — this binary's app descriptor version (esp_app_get_description()).
+ *   BT — the D1 Mini BT-agent reporting on UART (bt_agent_get_version()).
+ *   C6 — the ESP-Hosted co-processor (esp_hosted_get_coprocessor_fwversion).
+ *
+ * Setters take a short string (clipped to FW_INFO_MAX-1 chars + NUL); they
+ * are safe to call from any task. Getter returns "" until the corresponding
+ * setter has run, so UI code can render unconditionally and just see an
+ * empty value while a subsystem is still bringing itself up. */
+#define FW_INFO_MAX 24
+void        fw_info_set_p4(const char *version);
+void        fw_info_set_bt(const char *version);
+void        fw_info_set_c6(const char *version);
+const char *fw_info_get_p4(void);
+const char *fw_info_get_bt(void);
+const char *fw_info_get_c6(void);
+
+#ifdef __cplusplus
+}
+#endif

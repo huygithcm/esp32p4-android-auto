@@ -1,0 +1,18 @@
+idf_component_register(
+    SRCS
+        "dev_settings.c"
+        "vesc_stubs.c"
+        "vesc_battery_calc.c"
+        "vesc_trip_persist.c"
+        "vesc_head2.c"
+        "app_fs.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        nvs_flash
+    PRIV_REQUIRES
+        esp_timer
+        joltwallet__littlefs
+        freertos
+        vesc_can
+)
