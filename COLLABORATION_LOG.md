@@ -28,6 +28,80 @@ present from work performed in the current session.
 
 ## Entries
 
+### 2026-09-24 - Codex - Checkpoint current shared work
+- Scope: user requested committing all current work on the existing branch.
+  Includes prior collaborator work, not only this session's changes.
+- Files: multi-agent configuration/instructions, CAN P4/S3 audit, dated
+  JC4880 firmware image, RAR package, firmware/Lisp bundle and this log.
+- Added `release/.gitattributes` to explicitly treat firmware/archive files
+  as binary; merged-image padding caused Git to misidentify BIN files as text.
+- Checks: all four TOML files parse; bundled firmware and Lisp match their
+  source copies byte-for-byte and by SHA256; RAR is nonempty with RAR5 magic.
+  Git whitespace checks passed. No new firmware build or hardware tests:
+  this checkpoint packages existing artifacts and documentation/configuration.
+  Archive extraction/integrity was not retested.
+- Status: prepared for local commit; commit success is reported by Git.
+- Handoff: no push requested; hardware acceptance and S3 parity gaps remain
+  as recorded in the audit and earlier release entries.
+
+### 2026-09-24 - Codex - Configure project multi-agent workflow
+- Scope: user requested multi-agent operation in this folder.
+- Files: `.codex/config.toml`, `.codex/agents/*.toml`, `AGENTS.md`,
+  `docs/MULTI_AGENT.md`, and this entry.
+- Changes: enable up to three concurrent subagents with inherited models,
+  explicit file ownership, read-only exploration/review, serialized shared
+  builds and primary-only log updates.
+- Checks: Python tomllib parsed all four TOML files and required role fields;
+  Codex CLI 0.156.1 reports multi_agent stable/true; git diff --check passed
+  before this log entry. Live subagent spawn and messaging succeeded.
+  Independent file review was blocked by sandbox process setup errors;
+  primary read-only validation ran outside the sandbox with approval.
+  Firmware tests were not needed for configuration/documentation changes.
+- Status: complete; no commit, push or hardware action.
+- Handoff: start a new trusted project session to reload roles/config;
+  fresh-session custom-role loading has not been exercised. Preserve the
+  concurrent CAN audit/log entry and pre-existing release artifacts.
+
+### 2026-09-24 - Codex - Audit actual S3 clone against P4 CAN flows
+- Scope: compared P4 7c77f2b, actual separate S3 clone at d311601 including
+  collaborator-owned dirty integration, and source seed 6642136. Read the
+  cloned Waveshare LCD7 and LCD7B CAN examples; no firmware source changed.
+- Files: added `docs/CAN_P4_S3_PARITY_AUDIT.md`; updated this log only.
+- Findings: core CAN/config matches P4, but actual S3 retains old ride/Lisp
+  protocol and omits ride target updates; LCD7B mux setup matches its example,
+  while output shadow selects CAN before the explicit call even in emulator.
+  Shared CAN transport needs malformed-DLC and concurrent-traffic review.
+- Checks: fresh P4 host Lisp 13/13, transport 53/53, safety 2532/2532,
+  gear 81/81, JK BMS and config serdes all pass. Outputs in ignored
+  `build/can_s3_audit`. No S3 rebuild, flash, physical CAN or motor tests.
+- Status: audit complete; application parity and hardware acceptance open.
+- Handoff: preserve existing S3 BSP/native BLE/display work; integrate the
+  matching P4 backend/UI/Lisp set and target callback, then execute the report's
+  A/B bench matrix. Do not infer latest P/R hardware validation from old flash
+  records. Existing AGENTS/.codex/MULTI_AGENT/release changes are not this work.
+
+### 2026-09-19 - Codex - Collect firmware and ESC Lisp in one folder
+- Files: `release/jc4880-v1.3.7-2026-09-19-7c77f2b/` contains copied
+  `merged.bin`, current `lisp/main.lisp` as `main.lisp`, and usage README.
+- Checks: both copies match source SHA256; originals preserved.
+- Status: complete locally; no flash, commit or push.
+
+### 2026-09-19 - Codex - Rebuild and package dated JC4880 merged image
+- Scope: user requested checking the current build and one dated/versioned
+  release file. Kept project version 1.3.7 and source commit 7c77f2b; no S3
+  firmware or version bump is implied.
+- Artifact: `release/esp32p4-jc4880-v1.3.7-2026-09-19-7c77f2b-merged.bin`,
+  4,609,392 bytes, ESP32-P4 JC4880 16 MB, flash at offset 0x0.
+- Checks: incremental firmware rebuild passed, app 4,478,320 bytes and 15%
+  OTA-slot free; image checksum/hash valid. Merge used flasher_args.json;
+  SHA256 of all four source regions matched the corresponding merged slices.
+  Host tests: Lisp 13/13, transport 53/53, parser 2532/2532, gear 81/81 pass.
+- Status: packaged locally, not flashed or pushed; older releases preserved.
+- Handoff: bench validation still required. Merged flash includes padding over
+  NVS/gaps and OTA initialization, so back up device settings before flashing.
+  It does not update the ESC Lisp: upload `lisp/main.lisp` separately. Legacy
+  `main.ru.lisp` still contains old cruise/beep and is not the test script.
+
 ### 2026-09-18 - Codex - Checkpoint shared P/R branch for remote handoff
 - Scope: user requested committing and pushing the current shared branch to
   origin; includes the accumulated collaborator changes, not solely this turn.
