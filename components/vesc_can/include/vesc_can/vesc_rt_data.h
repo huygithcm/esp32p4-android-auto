@@ -28,6 +28,7 @@ void vesc_rt_data_init(uint8_t target_vesc_id, uint32_t poll_interval_ms);
 void      vesc_rt_data_loop(void);
 esp_err_t vesc_rt_data_start_task(void);
 
+bool vesc_rt_data_is_active(void);
 void vesc_rt_data_start(void);
 void vesc_rt_data_stop(void);
 

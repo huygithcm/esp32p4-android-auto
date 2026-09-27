@@ -41,6 +41,8 @@ void vesc_lisp_poll_init(uint8_t target_vesc_id, uint32_t poll_interval_ms)
     s_stats_received = false;
 }
 
+bool vesc_lisp_poll_is_active(void) { return s_active; }
+
 void vesc_lisp_poll_start(void) { s_active = true; s_last_poll_ms = 0; }
 void vesc_lisp_poll_stop(void)  { s_active = false; }
 

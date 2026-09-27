@@ -1,0 +1,171 @@
+{
+  "head": "d3116016b21a986985a27068ca2504314c126a3f",
+  "files": {
+    "main/main.c": {
+      "before": "faac77e3246a360d0bfe50d57076032610db646e0c8547553381e8a7cad84c49",
+      "after": "b3d1bb1e542a2a0632b17a71198414848c83558978874d0c9b92d09ea5937119"
+    },
+    "components/vesc_can/include/vesc_can/comm_can.h": {
+      "before": "350be3088ca3c2359b60bf22c743797121ed872b5083a7c8dd48842652b14a0f",
+      "after": "cfd6412b4b303d2cb48f9bb8bc5d58c64bdb4b2c3bb408cdb7479802e6ad03e2"
+    },
+    "components/bsp_board/waveshare_esp32_s3_touch_lcd_7.c": {
+      "before": "e53fe3c3529392ae0516c7397bf1b14b62fb9e5cdbb0758c557f31def2412c9a",
+      "after": "45b7a119326a60740cda088da2db578148fd5d6ca43d7a55fec1215b78dcda2b"
+    },
+    "main/ble_nus.c": {
+      "before": "77d152a58b45ac85570719155b110104a208b0d7a33c64106a27f4d7d8818a82",
+      "after": "c1ec2368bd156879b4d5cb27dfd5c5053c67e3eb84f335e568ea84c7230135d6"
+    },
+    "components/vesc_can/vesc_lisp_code.c": {
+      "before": "b793f4be234e44e4d4f0c2ed58ea9b535fb9321986571d493848bb4ac7a598a0",
+      "after": "6063fafedaed9825116bd83f5df95c70dc573102dad9b62173201e5076e718b3"
+    },
+    "components/vesc_can/comm_can.c": {
+      "before": "d64cd782f6dc005b543bffeab4765f73acd20a14f33fc89585f7b86ca5b9d768",
+      "after": "038c1e0ffb96a8be6e673a033dcc6388227827ec595bd69499a5e60278ef5d4b"
+    },
+    "components/vesc_can/vesc_ride_mode.c": {
+      "before": "5fc6b3f2308dd3f355c7c129d147337bd49fa04713bc53d63c6eab0fce4da4bc",
+      "after": "3a4cfb1f62ef5a0116ee40400dc936e9c7f2bf1053677cf70118dbdb339833f5"
+    },
+    "scripts/test_can_integration.py": {
+      "before": null,
+      "after": "d731d9a161720ee6ed96fa8d9f02406f0d67a9dc384747cddb566e140cdfcb23"
+    },
+    "scripts/test_can_host.py": {
+      "before": null,
+      "after": "557646479bee65dfa269346e82306192b084486096eadcee80729728e4ebb55f"
+    },
+    "scripts/tests/can/test_comm_can.c": {
+      "before": null,
+      "after": "c6544304f34e34b0ed9af991ef0b77b64cf63e82cfc3a4748a9e75e9e9bd0030"
+    },
+    "scripts/tests/can/test_ride_target.c": {
+      "before": null,
+      "after": "599812bcfc02147369691da25d33415ea5a89d7d825c9cf57993203cbdc3c260"
+    },
+    "scripts/tests/can/transport_mocks/esp_err.h": {
+      "before": null,
+      "after": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+    },
+    "scripts/tests/can/transport_mocks/esp_log.h": {
+      "before": null,
+      "after": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+    },
+    "scripts/tests/can/transport_mocks/esp_timer.h": {
+      "before": null,
+      "after": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+    },
+    "scripts/tests/can/transport_mocks/mock_idf.h": {
+      "before": null,
+      "after": "ddd30b3ee4cbc2135e445ff1ba1566725c7fcf897abe935441fa9c30b2d619bd"
+    },
+    "scripts/tests/can/transport_mocks/driver/twai.h": {
+      "before": null,
+      "after": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+    },
+    "scripts/tests/can/transport_mocks/freertos/FreeRTOS.h": {
+      "before": null,
+      "after": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+    },
+    "scripts/tests/can/transport_mocks/freertos/semphr.h": {
+      "before": null,
+      "after": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+    },
+    "scripts/tests/can/transport_mocks/freertos/task.h": {
+      "before": null,
+      "after": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+    },
+    "scripts/tests/can/ride_mocks/esp_log.h": {
+      "before": null,
+      "after": "e6feee98a017545a76185ac39bb36c5a2171f98e2079f776474ae187eccf390a"
+    },
+    "scripts/tests/can/ride_mocks/esp_timer.h": {
+      "before": null,
+      "after": "82a7c14acf5d1cdcbea1b23bab880c69562da88013adc34ff5f2ae2115fb08d1"
+    },
+    "scripts/tests/can/ride_mocks/freertos/FreeRTOS.h": {
+      "before": null,
+      "after": "484d2319125ffe06649a648c95e8b0e485f8a202fc39c7ccabc4dbcf3f9a4977"
+    },
+    "scripts/tests/can/ride_mocks/freertos/queue.h": {
+      "before": null,
+      "after": "27493c9ce7626bd8266f9b480e7067ea6821d75c9e694079da34620371d41a71"
+    },
+    "scripts/tests/can/ride_mocks/freertos/semphr.h": {
+      "before": null,
+      "after": "9ccdbcbb20da6bf124af3f9e63e957232fa409ffe5db4f522ebb9dfaeb93a749"
+    },
+    "scripts/tests/can/ride_mocks/vesc_can/comm_can.h": {
+      "before": null,
+      "after": "043052f721e1f0b7fd0d697f5d1acc17199e3b5d2b9e95ade1bdf20721c96bf6"
+    }
+  },
+  "protected": {
+    "Super_VESC_Display/custom/bms_view.c": "fbf44a686e6f6102b5a4f3ceac6eb892c8513a29e78e8ff8eaa764dae040654d",
+    "Super_VESC_Display/custom/bms_view.h": "08e99cfcf1b99643bbe73dca21bf19f868f6d20c7027e75a95e7885b36b36126",
+    "Super_VESC_Display/custom/custom.c": "0f152113e28c1313bb31777e50640594532530837d4c835203e73ef2d87dece6",
+    "Super_VESC_Display/custom/custom.h": "8991739115b1ba0204e0fb493999a39804b9095398ed75fbcb647d969c865eaf",
+    "Super_VESC_Display/custom/custom.mk": "28cee3648252a5bde5c1af0a8cc070953f3f4690f9f59c3b3cd6a13080551a20",
+    "Super_VESC_Display/custom/dashboard_theme.c": "3337d0af41d2dcdb03a5f871ff1ba27c1250cc899e09fac5457f17ce3f5c93b6",
+    "Super_VESC_Display/custom/dashboard_theme.h": "aa4465fa1b0dc0b594187486cd7c1feadfbfc246479898b32a75385b539b0a90",
+    "Super_VESC_Display/custom/lisp_editor.c": "d4d9de34f52f278707f88b30b5016ae02a093b0c478c77e38e1f61e1081a61f2",
+    "Super_VESC_Display/custom/lisp_panel.c": "7e76ea0acbfa061c7c85f0ab7786a6b49d3f5a495bd6454713e2b3e76a63c577",
+    "Super_VESC_Display/custom/lv_conf_ext.h": "86f3b24bdd1264812d1a8260bde3c98fd27ea350509dca7037edf315efb3086c",
+    "Super_VESC_Display/custom/pas_screen.c": "77216f1c0cb3411375db9b0cba434f312982c54f75d2a24193303afcff59a21c",
+    "Super_VESC_Display/custom/realtime_viewer.c": "74a68d71fd9143df1c0292a15d3d14502079760962f65ce7a1607851fc9f8a1e",
+    "Super_VESC_Display/custom/ride_mode_backend_stub.c": "4ba573fa882adc71fc9e4adf7a747bd86ab51623df5388ee71742910ad63a4e2",
+    "Super_VESC_Display/custom/ride_mode_screen.c": "3ec97c030095e62bdaded3bfcbf5e9e04624ae44266da1b71f95b3706e44eb8e",
+    "Super_VESC_Display/custom/settings_wrapper.c": "3ce764eccd5a0394eea6e02f8574239d7584866806513d5bc2cf5155092fa244",
+    "Super_VESC_Display/custom/settings_wrapper.h": "036ea19de219bd4bce7ab268791e156c51ca1dccdf53c0271a95ff95ca547bc5",
+    "Super_VESC_Display/custom/theme_generic.c": "e6c99ee5b0b6db0aa9fed74349ce45c9848bb9327ffa084287ea16c389d48e5f",
+    "Super_VESC_Display/custom/theme_generic.h": "59d928aa6043128b81229e01036d67856038558dcaafdf2f47758d326d12f609",
+    "Super_VESC_Display/custom/theme_ref.c": "3ab4123d4f61e72c8881626795a62a25ab87ec1d03ed557931438fdebc2b9df4",
+    "Super_VESC_Display/custom/theme_ref.h": "84d44cfab7229a55804274af971880ebbebecdd6bece2d2f8f3b6aa2bce106ce",
+    "Super_VESC_Display/custom/trip_statistics.c": "c5ad27f7efd95cc3c5c47d62bf2f5d095cb9b9dcd2a1bef60c1967b463d30faf",
+    "Super_VESC_Display/custom/vesc_tool_menu.c": "d098ea929a97874c41a20a9b4ada0729f086d76cc98003ff7600c25d8b519fd3",
+    "Super_VESC_Display/generated/events_init.c": "fc344ee2f68a85d7ef732a3abeaedb287d7b4297f10fd6dddacb6c8f084209ec",
+    "Super_VESC_Display/generated/events_init.h": "a2bf2400170368e7b4bf500c56ac39be23e7014c20870d6fd726dbacccac61cc",
+    "Super_VESC_Display/generated/generated.mk": "bcbbc3b87bff3ea5e33636d5f2bafb021c405e0c76eccd79e826869644d73d57",
+    "Super_VESC_Display/generated/gui_guider.c": "acbc009af4ef980d8f090140431b88f3b3ecb52fd756fcd2f3425abf4d8f344a",
+    "Super_VESC_Display/generated/gui_guider.h": "c72da3a26321d8064b4d52d726c3de9f0b5b266ae57fe630a2293914a91a9888",
+    "Super_VESC_Display/generated/setup_scr_dashboard_Classic.c": "75e2d6da6271e590006d56c6f59cbcb7072868b22322511ae339666531028a9b",
+    "Super_VESC_Display/generated/setup_scr_dashboard_Classic_Max.c": "abbcc6a2192ed11fbd75b513b3a824675b2898b50c3bde8cd7806a0b50b9835e",
+    "Super_VESC_Display/generated/setup_scr_dashboard_Lamborghini.c": "801b101ea89b718ef118e224d74a0ed6fc34b69484b05c3167f0847dc1e8abc4",
+    "Super_VESC_Display/generated/setup_scr_dashboard_Supermoto.c": "de230ec0b3baff5f1b070991196adf1cf1ab93da9234a0208f02472dc2bb51b6",
+    "Super_VESC_Display/generated/setup_scr_reference.c": "3feeacc5f1a3d1d52f12002a86529176b0196f48b379abbab86b9a2387d50742",
+    "Super_VESC_Display/generated/setup_scr_settings.c": "9b1b84adfe67cc4e72e1c0247316a982a8e43a05347e24fbcc1d6a80ea7dfd2f",
+    "Super_VESC_Display/generated/widgets_init.c": "da8c6455ba0572eca5042154a7b53d273d8681fcdfee3f5edad85dc1a1039f93",
+    "Super_VESC_Display/generated/widgets_init.h": "61ce22dc807e92345f87ec89cf9444236b2e78b2707e94166c01c12ccd4f66a1",
+    "Super_VESC_Display/generated/guider_customer_fonts/guider_customer_fonts.h": "20cd0585bc648d054ac8f7166e0d6019c6cafebefedf25d04c3b7c87f8c502ad",
+    "Super_VESC_Display/generated/guider_customer_fonts/guider_customer_fonts.mk": "55ff2c9ac2452c8d6310a5217bf56d9bee924ff101a5ad67af0010bfc645b173",
+    "Super_VESC_Display/generated/guider_customer_fonts/lv_customer_font_Montserrat_I_12.c": "9210917fd30298b7922d967d2ecbaa1a4969f19e788a0d768c178cd9277642a4",
+    "Super_VESC_Display/generated/guider_fonts/fonts_list.mk": "35d971faa9760d669614d34f8b5b6ef20056909cb36cce807829e836a11e9dbf",
+    "Super_VESC_Display/generated/guider_fonts/guider_fonts.mk": "2ac76d0fba1133780c7d6c9af8de36a3358ed73f6ca071e22f674ddfd63ce8f8",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_Antonio_Regular_100.c": "754ef6d41b4952105f52d3944efb61d3e72004fa89cffd99b36eb7a3dfdaef3d",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_Antonio_Regular_200.c": "a298f29a10c8b41f16710f2a99e3f963cdc396403b70c034dded9cbddfbae3f4",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_Antonio_Regular_22.c": "22fe831053fffc987cf3fe9a0a8f97bb079fa562019bf8b9e34a0a90261c28ba",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_Antonio_Regular_32.c": "0024fd6afbbf2376c7c5be4505f1e7be07c64b8985015038b338bf1cd793fd8d",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_Antonio_Regular_40.c": "85295519fd31aebc02fa5b1503f78b5e9ce4000362e0231ebcfeb7ab99c7f434",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_Antonio_Regular_50.c": "32fcdee0bab9a655c5bf93911aa682b98ebefb460141bf74d81ccf7b0949bde8",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_Antonio_Regular_64.c": "9d03c0821da42320255ecfa59eb5d1037f936acd9a1531adfd64bd71c3fc81d9",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_montserratMedium_11.c": "a840ae77dd423a5db6c34ed6c5f9092821a7e2822fa95ce5a7a20991aa7eb757",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_montserratMedium_12.c": "c88245b6b15610a945716da6ff28370a4827ced6c98994c5f68b55a25f20aa2f",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_montserratMedium_16.c": "70b0457db38d3c6c6b4532d5b6d4fe0d1a198c1d88a34ca95a7c51c4006eb1bd",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_montserratMedium_18.c": "e23eae881e6b66a5df7050ab7717dee99f892706aaeb11fa984807ec45a2d9fb",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_montserratMedium_20.c": "00362ef435bbea46ff4569d24196a1e56d74cbe8e067a66f2d8ea1569c235a50",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_montserratMedium_22.c": "0165c12d9b4189fd68569dd3d9637d86cffee618ada5fc8995c8a6837644984c",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_montserratMedium_24.c": "a1644394ce3c5d33d538de7377b1b50c2043cf9436658f3146a0ffb36e4d215d",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_montserratMedium_25.c": "f6c1ecdd955034c35111a31915d40c931df788b0de5e50a6e20e4c86264e3271",
+    "Super_VESC_Display/generated/guider_fonts/lv_font_montserratMedium_26.c": "2045ae2e1c1e0355bd6a3d6eafcc2877b13fe6fc428f24ed5edd03d6fe0f3077",
+    "Super_VESC_Display/generated/images/images.mk": "7aaf0952488ef70eef2c32cab7f02afbce66166cbebfd8becc9d54d41f926461",
+    "Super_VESC_Display/generated/images/images_list.mk": "cdc4650e97af326b61e90858848be60896111b3bf357d5d7fa06c0d97bffd0f0",
+    "Super_VESC_Display/generated/images/images_md5.json": "ed5be874c753524524facce29502039d4a8c763f244a3b85f34f765100ea1848",
+    "Super_VESC_Display/generated/images/lottie_list.mk": "155b4a8b76decef3ec7dd027dad245d253fe7f6aded5e016b88f507cc1d3d60b",
+    "Super_VESC_Display/generated/images/_cruise_control_alpha_38x38.c": "b134fb3527366743b32a45a7afde25c545221a569730de2baab62775df2ba867",
+    "Super_VESC_Display/generated/MicroPython/images_md5.json": "33834401f3f5e3970cd3f5638bb3cfaf9ac61f3cf0ed8e9b765d79ad90296120",
+    "main/vesc_ui_updater.c": "15a7668928b588a0ed347e58b784a398efb6fcac7dd96515a6cb5895397bdfca",
+    "lisp/main.lisp": "e304b817b931cbf7896f8e710df0cd28401af6a497249ebb4f9731c668106e88"
+  }
+}

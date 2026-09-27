@@ -1,0 +1,34 @@
+{
+  "product": "ESP32-P4 VESC Display",
+  "board": "jc4880",
+  "firmware_version": "1.3.7",
+  "source_commit": "7c77f2b3595fcc0258e26d2049210c4e507bf8d8",
+  "build_date": "2026-09-19",
+  "package_prepared_date": "2026-09-25",
+  "flash_offset": "0x0",
+  "flash_size_mb": 16,
+  "drive_directory": "ESP32-P4/releases/v1.3.7/7c77f2b/jc4880",
+  "contents": {
+    "merged.bin": {
+      "bytes": 4609392,
+      "sha256": "72ba10faf741535fa4bf350a846f7a13a9f3b0b1d518d6d41e854f20fa26d2e8"
+    },
+    "main.lisp": {
+      "bytes": 48430,
+      "sha256": "4aa8c31bb64888a5421c5d96369899ca2ae29172d5d500a5a217e9f4d05616e6"
+    },
+    "README.md": {
+      "bytes": 656,
+      "sha256": "1277e33bd5dec3d24c568796547473bd96d4d8118536f93631e1057639e479de"
+    }
+  },
+  "esc_lisp_requires_separate_upload": true,
+  "validation": "Existing build and host tests recorded; physical acceptance not confirmed.",
+  "notes": [
+    "Latest existing packaged release; not a rebuild of current dirty working tree.",
+    "Does not contain uncommitted target-polling fix from 2026-09-25.",
+    "Customer M-TEMP/Settings symptoms remain under investigation.",
+    "Current bundled Lisp requires persisted ADC Control Type NONE and starts in PARK.",
+    "Merged flash may overwrite NVS/settings. Use only on JC4880 ESP32-P4."
+  ]
+}

@@ -72,6 +72,8 @@ void vesc_rt_data_init(uint8_t target_vesc_id, uint32_t poll_interval_ms)
              (unsigned)s_request_interval_ms);
 }
 
+bool vesc_rt_data_is_active(void) { return s_active; }
+
 void vesc_rt_data_start(void)
 {
     s_active           = true;

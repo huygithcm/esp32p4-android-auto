@@ -35,6 +35,7 @@ typedef struct {
 } lisp_stats_t;
 
 void vesc_lisp_poll_init(uint8_t target_vesc_id, uint32_t poll_interval_ms);
+bool vesc_lisp_poll_is_active(void);
 void vesc_lisp_poll_start(void);
 void vesc_lisp_poll_stop(void);
 /* Pumped from vesc_rt_data's CAN polling task — one task drives both

@@ -27,6 +27,180 @@ present from work performed in the current session.
 - Log material edits and verification before handing work to another actor.
 
 ## Entries
+### 2026-09-27 - Codex - Checkpoint pending P4 work and publish local branches
+- Scope: user requested checking commits and pushing all branches from this
+  repository to origin. Preserve and checkpoint the accumulated shared changes,
+  including prior collaborator work; no firmware/source implementation this turn.
+- Files: pending target-polling fix and regression script, diagnostic docs,
+  prepared S3 CAN fix package, Drive-upload release artifacts, and this log.
+  Added scoped .gitattributes to preserve byte-exact payload/release hashes
+  across Git line-ending conversion; diff context whitespace stays intact.
+  A standalone root `main.lisp` appeared during review and is included as a
+  separate shared snapshot; it differs from canonical `lisp/main.lisp`, which
+  is preserved. No runtime compatibility is claimed for the standalone copy.
+- Checks: live origin heads inspected; five local branches inventoried.
+  CAN payload SHA256, Python syntax, release SHA256 and ZIP CRC pass;
+  whitespace check passes. No new compilation, firmware build or flash:
+  the user's explicit build-confirmation gate remains in effect.
+- Status: preparing normal commit/push; success must be checked against live
+  remote refs after push. No force push, branch switching or dirty-tree reset.
+- Handoff: S3 clone is separate and has two committed changes plus dirty work;
+  its publication scope was asked separately. The packaged CAN fixes remain
+  unapplied, and release artifacts do not include the pending polling fix.
+
+### 2026-09-25 - Codex - Re-audit confirmed working September 2 baseline
+- Scope: user confirms e7f0b16 is the working release; fresh firmware diff and
+  independent read-only review of safety polling and mutex behavior.
+- Files: docs/P4_E7F0B16_COMPARISON.md and this log only; prior edits preserved.
+- Checks: git log/diff e7f0b16 -> 7c77f2b -> HEAD/current. Temperature decoder,
+  CAN core, touch routing and Settings entry unchanged. Old Lisp ignores new
+  safety/status requests, potentially adding two 60 ms waits per cycle.
+  State mutex released before CAN waits; no demonstrated deadlock found.
+- Status: static review complete; no build/flash/new tests. Existing parser
+  tests reused because parser unchanged; customer cause remains unproven.
+- Handoff: controlled P4 A/B with fixed ESC/Lisp/config, raw temperature/mask
+  and timeout traces. Customer acceptance is reported, not device-tested here.
+
+### 2026-09-25 - Codex - Prepare version/commit release for Google Drive
+- Scope: user explicitly authorized Google Drive upload of latest release,
+  organized by version and commit. Latest packaged firmware is JC4880 v1.3.7
+  from 7c77f2b built 2026-09-19, not the current uncommitted source changes.
+- Files: release/drive-upload/ESP32-P4/releases/v1.3.7/7c77f2b/jc4880 contains
+  unchanged merged.bin, main.lisp and README plus release.json/SHA256SUMS.txt.
+  Archive: release/drive-upload/esp32p4-jc4880-v1.3.7-7c77f2b-2026-09-19.zip.
+- Checks: merged binary 4,609,392 bytes matches original SHA256; ZIP CRC and
+  archived data checks pass. ZIP 2,822,001 bytes, SHA256
+  86df00a8a8bf2b9c56a82d0b2ae478b19b5b099fe37662d217c843e315747108.
+  Manifest explicitly excludes uncommitted polling fix and records unresolved
+  customer symptoms, bundled Lisp prerequisites and hardware-validation limits.
+- Blocker: plugin search confirms Google Drive installed/enabled, but no Drive
+  operations/tool-search loader exposed in this session. Browser fallback
+  failed initialization with sandbox helper_unknown_error/setup refresh.
+- Status: prepared locally; NOTHING uploaded to Google Drive. No build/flash,
+  commit or push. Existing edits preserved.
+- Handoff: resume upload when Drive tools become available; use directory above
+  and verify uploaded files/checksums. User authorization already provided;
+  no new upload approval is needed within this scope.
+
+
+### 2026-09-25 - Codex - Trace M-TEMP and clarify inaccessible Settings
+- Scope: user clarified Settings cannot be opened, not a mode Save/select
+  failure. Earlier Lisp compatibility findings do not explain navigation.
+- Files: added docs/P4_TEMP_SETTINGS_DIAGNOSTIC.md; this log only. No firmware
+  source changes; all prior shared edits preserved.
+- Checks: extracted actual old/current RT parser/freshness functions into
+  ignored build/temperature_audit harnesses, compiled with actual buffer.c;
+  309 checks per version pass. ADC/current sweeps do not alter temperature;
+  altered temperature bytes do. Reproduced command-only SETUP refreshing stale
+  data and partial snapshots. Wrong-mask case is deliberate synthetic input,
+  not observed traffic. No combined hardware symptom has been reproduced.
+- Independent read-only review maps all temp writers and Settings touch path.
+  Settings CLICKED loads unconditionally; no Lisp/ga/PARK gate. Touch/nav are
+  unchanged since e7f0b16. Source-derived suspects: small hitbox/slider edge,
+  drawer scrim, multi-touch suppression, AA routing mismatch, input failures.
+- Status: investigation documented; no build/flash/motor actuation or hardware
+  touch test. Full firmware compilation was not needed for a read-only audit.
+- Handoff: customer direct VESC Tool temp/ADC comparison and Settings versus
+  Statistics/VESC touch response needed. Shared electrical noise is only a
+  hypothesis, not a diagnosed cause. New safety polling changes bus load but
+  does not directly remap temperature or block Settings.
+
+
+### 2026-09-25 - Codex - Compare working tree with pre-PARK e7f0b16
+- Scope: user requested current-code comparison with e7f0b16 (2026-09-02).
+- Files: added docs/P4_E7F0B16_COMPARISON.md; this log only. Existing firmware
+  edits and untracked S3 staging package preserved.
+- Findings: major differences are PARK boot/TX semantics, native ADC NONE
+  prerequisite, heartbeat/fault handling, silent modes/PAS rearm, new sequenced
+  safety/status protocol and gear UI. Config stays format2 in BOTH versions.
+  Native config tables, temperature decode, low-level CAN, IO and BLE bridge
+  are unchanged; safety polling increases traffic. Earlier uncommitted target
+  polling fix is not included in the September 19 release binary.
+- Checks: direct Git diffs plus independent read-only Lisp behavioral review;
+  reused prior host results without rerunning unchanged tests. No firmware
+  build, flash or hardware test in this comparison. Diff whitespace checked.
+- Status: comparison complete; deployed customer pair remains unidentified.
+- Handoff: see report for changed operational prerequisites and symptom
+  boundaries; do not infer hardware acceptance or a temperature fix from diff.
+
+
+### 2026-09-25 - Codex - Historical new-P4 / old-Lisp compatibility audit
+- Scope: user requested historical evidence for the customer symptoms; no
+  firmware source changes in this follow-up. Earlier polling patch preserved.
+- History: 3bf38cf (2026-08-22) adds editable ride protocol; ae4f9ae
+  (2026-09-02) changes config format 1 to 2; 7c77f2b (2026-09-18) adds
+  safety/PARK and sequenced status. Firmware version.txt remains 1.3.7 across
+  these changes, so the version string alone does not identify compatibility.
+- Results with current P4: pre-ride Lisp has no config handler -> timeout;
+  format1 (aff3edf) reply -> BAD_VERSION / Backend version mismatch;
+  format2 before PARK (e7f0b16) config remains accepted, but old 0x89 status
+  cannot refresh live status and no 0x8B safety reply means gear '-' / no PARK.
+  Thus old Lisp explains some mode symptoms, not every Settings failure.
+- Telemetry/native-config audit: independent read-only comparison across
+  344afae, 3bf38cf, ae4f9ae, e7f0b16, 7c77f2b found unchanged native config
+  component, IO parser, command IDs, CAN transport and RT temperature decode.
+  Custom Lisp packets use command 36, SETUP uses 47/51, config reads 14/17.
+  No throttle-to-temperature remapping found. Old Lisp may reapply its own
+  speed/current scales, distinct from failing native config read/write.
+- Checks: host harness build/lisp_compat_audit/compat.c (ignored) feeds fixtures
+  matching historical rm-send-config layouts to actual current backend/parser;
+  15 checks pass for timeout, format mismatch, v2 acceptance, rejected legacy
+  status, unknown gear and unavailable PARK. No LispBM, physical CAN, new
+  firmware build, flash or customer-device verification performed.
+- Handoff: verify exact customer binary/date and running ESC Lisp; update as
+  a matched set. Investigate M-TEMP separately using direct VESC Tool readings.
+
+
+### 2026-09-25 - Codex - Investigate P4 mode/data and throttle-linked M-TEMP
+- Scope: user reports customer P4 cannot read/set mode/config and throttle
+  changes M-TEMP (photo -99 C). Customer may not have updated ESC Lisp;
+  actual flashed P4/ESC versions and direct VESC Tool readings remain unknown.
+- Findings: SETUP motor temperature maps directly to the M-TEMP widget; ADC
+  throttle uses a separate decoded-ADC packet. No UI swap found. Old/missing
+  Lisp may explain unavailable mode, but does not establish the temperature
+  cause. Config supports exact 6.05/6.06/7.00 tables; other versions fall back
+  read-only. Raw packets/device logs needed to distinguish other CAN faults.
+- Files changed: main/main.c preserves RT/Lisp/IO active states after target-ID
+  reinit; components/vesc_can/{vesc_rt_data,vesc_lisp_poll}.c and their public
+  headers add active-state getters. scripts/test_target_polling.py exercises
+  actual callback and RT/IO lifecycle (Lisp lifecycle mocked).
+- Checks: new host regression fails on original callback, passes patched
+  callback with Lisp polling both disabled/enabled, including paused transfer
+  state and resume at the new target. Review caught and corrected an initial
+  unconditional resume during uploads. Fresh host transport 53,
+  safety parser 2532, gear 81 checks pass; Lisp 13/13 host cases pass.
+  Packaged 2026-09-19 main.lisp SHA256 equals current lisp/main.lisp.
+  USB inventory exposes only Bluetooth COM6/COM7, no P4 USB serial device.
+- Status: target-ID source fix verified on host; customer symptoms unresolved.
+  No firmware rebuild/flash: this is a diagnostic/source correction, deployed
+  board/image identity is not confirmed. No motor commands or ESC writes.
+- Handoff: compare Motor Temperature and ADC1 in VESC Tool versus P4; verify
+  ESC firmware and running bundled Lisp, and collect exact config error.
+  Existing CAN S3 fix package and prior log edits preserved. Independent
+  read-only telemetry review completed. Tests do not validate physical CAN
+  timing, FreeRTOS concurrency, LispBM execution or the customer's wiring.
+
+
+### 2026-09-24 - Codex - Prepare gated S3 CAN fix script, no firmware build
+- Scope: user requested CAN communication fixes for the actual S3 clone while
+  keeping UI unchanged, then explicitly required confirmation before building.
+- Files: added `scripts/can_s3_fix/` with check-only-by-default apply script,
+  SHA256 manifest, review diff, seven firmware payloads and host test payloads.
+- Changes prepared: frame guards, whole-packet TX lock/error handling, RX slot
+  copy/sender metadata, target/queue/cache/sequence handling, Lisp-transfer ride
+  pause, USB/CAN mux initialization. Format1/UI/ESC Lisp preserved.
+- Checks before the no-build instruction: staged transport 14911 checks pass;
+  staged ride target 49 checks pass; integration seam reproduces old mux error
+  and passes proposed mux/callback/sender fix. Final bounded-drain/pause edits
+  and relocated packaged tests have NOT been compiled/rerun after that request.
+  Package SHA256 dry-run passes 25 files (7 firmware + 18 test files), with
+  64 protected UI/Lisp hashes; independent source/script review completed.
+- Status: script ready for review; no actual S3 source changes, firmware build,
+  flash, commit or push by this task. Clone pre-existing dirty files preserved.
+- Handoff: wait for the user's explicit build confirmation. Script --apply
+  only patches sources with backups and never compiles/flashes automatically.
+  Physical CAN checks and old format1 versus P4 format2 gap remain documented.
+  Concurrent P4 checkpoint 7de2530 was performed by another collaborator.
 
 ### 2026-09-24 - Codex - Checkpoint current shared work
 - Scope: user requested committing all current work on the existing branch.

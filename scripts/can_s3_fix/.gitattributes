@@ -1,0 +1,4 @@
+# Payload hashes cover exact bytes, including original line endings.
+payload/** -text whitespace=cr-at-eol
+# Unified diff context lines legitimately contain a single space.
+changes.patch -text whitespace=-blank-at-eol

@@ -1,0 +1,1116 @@
+--- a/main/main.c
++++ b/main/main.c
+@@ -201,7 +201,11 @@
+     /* Ride-mode config/status replies. Same COMM_CUSTOM_APP_DATA + 'VP'
+      * channel as the panel, different message ids (0x87/0x89); each gates on
+      * its own and ignores the other's traffic. */
+-    vesc_ride_mode_process_response(data, len);
++    /* A delayed reply from the previous target must not refresh ride state.
++     * Keep forwarding other nodes to the BLE bridge below. */
++    if (comm_can_get_packet_sender_id() == settings_get_target_vesc_id()) {
++        vesc_ride_mode_process_response(data, len);
++    }
+     ble_nus_forward_response(data, (uint16_t)len);
+ }
+ 
+@@ -266,6 +270,7 @@
+     vesc_io_data_init(new_id, 150);
+     vesc_lisp_code_set_target(new_id);
+     vesc_lisp_panel_set_target(new_id);
++    vesc_ride_mode_set_target(new_id);
+     ESP_LOGI(TAG, "VESC target ID → %u", new_id);
+ }
+ 
+--- a/components/vesc_can/include/vesc_can/comm_can.h
++++ b/components/vesc_can/include/vesc_can/comm_can.h
+@@ -83,6 +83,10 @@
+ typedef void (*can_packet_handler_t)(const uint8_t *data, unsigned int len);
+ void comm_can_set_packet_handler(can_packet_handler_t handler);
+ 
++/* CAN sender of the packet currently dispatched. Call only inside the
++ * packet handler, on the CAN process task; not a global target setting. */
++uint8_t comm_can_get_packet_sender_id(void);
++
+ /* Identity answered to a COMM_FW_VERSION request arriving over CAN.
+  *
+  * VESC Tool's CAN scan pings the bus, then asks every node that answered for
+--- a/components/bsp_board/waveshare_esp32_s3_touch_lcd_7.c
++++ b/components/bsp_board/waveshare_esp32_s3_touch_lcd_7.c
+@@ -38,7 +38,9 @@
+ static bool                     i2c_initialized;
+ static i2c_master_bus_handle_t  i2c_handle;
+ static i2c_master_dev_handle_t  ioext_dev;        /* the expander at 0x24 */
+-static uint8_t                  ioext_shadow = 0xFF;  /* output latch, reset state */
++/* Keep native USB selected while bringing up LCD/touch. CAN is selected
++ * explicitly by bsp_can_mux_enable() only when physical CAN starts. */
++static uint8_t                  ioext_shadow = (uint8_t)(0xFF & ~BSP_EXIO_USB_SEL);
+ 
+ static esp_lcd_panel_handle_t   panel_handle;
+ static esp_lcd_touch_handle_t   tp;
+@@ -144,6 +146,10 @@
+     };
+     ESP_RETURN_ON_ERROR(i2c_master_bus_add_device(i2c_handle, &dev_cfg, &ioext_dev),
+                         TAG, "IO expander: add device 0x%02x failed", BSP_IOEXT_ADDR);
++
++    /* Set the latch before enabling outputs, including USB_SEL=0. */
++    ESP_RETURN_ON_ERROR(ioext_write(BSP_IOEXT_REG_OUTPUT, ioext_shadow),
++                        TAG, "IO expander: initial output write failed");
+ 
+     /* All eight lines to output. */
+     ESP_RETURN_ON_ERROR(ioext_write(BSP_IOEXT_REG_MODE, 0xFF),
+--- a/main/ble_nus.c
++++ b/main/ble_nus.c
+@@ -19,6 +19,7 @@
+ #include "vesc_can/vesc_datatypes.h"
+ #include "vesc_can/vesc_io_data.h"
+ #include "vesc_can/vesc_lisp_panel.h"
++#include "vesc_can/vesc_ride_mode.h"
+ #include "vesc_can/vesc_lisp_poll.h"
+ #include "vesc_can/vesc_rt_data.h"
+ 
+@@ -145,6 +146,7 @@
+     vesc_rt_data_start();
+     vesc_lisp_poll_start();
+     vesc_lisp_panel_polls_pause(false);
++    vesc_ride_mode_polls_pause(false);
+     /* io_data is re-enabled by the realtime screen itself; leave off. */
+     ESP_LOGI(TAG, "LISP transfer idle — pollers resumed");
+ }
+@@ -167,6 +169,7 @@
+          * with code chunks ~50 ms apart it landed inside a transfer regularly,
+          * and its multi-frame reply shares the one per-sender reassembly slot. */
+         vesc_lisp_panel_polls_pause(true);
++    vesc_ride_mode_polls_pause(true);
+         ESP_LOGI(TAG, "LISP transfer active — pollers paused");
+     }
+     esp_timer_stop(s_poll_resume_timer);
+--- a/components/vesc_can/vesc_lisp_code.c
++++ b/components/vesc_can/vesc_lisp_code.c
+@@ -41,6 +41,7 @@
+ #include "vesc_can/vesc_rt_data.h"
+ #include "vesc_can/vesc_lisp_poll.h"
+ #include "vesc_can/vesc_lisp_panel.h"
++#include "vesc_can/vesc_ride_mode.h"
+ #include "vesc_can/vesc_io_data.h"
+ 
+ #include "esp_heap_caps.h"
+@@ -188,6 +189,7 @@
+     vesc_io_data_set_active(false);
+     /* Includes the dashboard poll, which runs regardless of the drawer. */
+     vesc_lisp_panel_polls_pause(true);
++    vesc_ride_mode_polls_pause(true);
+ }
+ 
+ static void resume_pollers(void)
+@@ -195,6 +197,7 @@
+     vesc_rt_data_start();
+     vesc_lisp_poll_start();
+     vesc_lisp_panel_polls_pause(false);
++    vesc_ride_mode_polls_pause(false);
+     /* io_data is driven by the realtime screen's own active flag; leave off. */
+ }
+ 
+--- a/components/vesc_can/comm_can.c
++++ b/components/vesc_can/comm_can.c
+@@ -70,6 +70,13 @@
+ static int              s_rx_buffer_device_id[RX_BUFFER_NUM];
+ static volatile uint8_t s_rx_buffer_last_id;
+ static volatile uint8_t s_rx_buffer_response_type = 1;
++/* Valid only from the synchronous packet-handler callback. */
++static uint8_t s_packet_sender_id;
++
++uint8_t comm_can_get_packet_sender_id(void)
++{
++    return s_packet_sender_id;
++}
+ 
+ static twai_message_t   s_rx_buf[RXBUF_LEN];
+ static volatile int     s_rx_write = 0;
+@@ -226,30 +233,37 @@
+     return ESP_OK;
+ }
+ 
++/* Caller holds s_send_mutex for the complete packet enqueue operation. */
++static esp_err_t transmit_eid_locked(uint32_t id, const uint8_t *data, uint8_t len)
++{
++    if (!s_init_done) return ESP_ERR_INVALID_STATE;
++    if (len > 8 || (len && !data)) return ESP_ERR_INVALID_ARG;
++    twai_message_t tx_msg = {0};
++    tx_msg.extd = 1;
++    tx_msg.identifier = id;
++    tx_msg.data_length_code = len;
++    if (len) memcpy(tx_msg.data, data, len);
++    esp_err_t err = twai_transmit(&tx_msg, pdMS_TO_TICKS(5));
++    if (err != ESP_OK) {
++        ESP_LOGW(TAG, "CAN TX failed id=0x%lx len=%u: %s",
++                 (unsigned long)id, len, esp_err_to_name(err));
++    }
++    return err;
++}
++
+ void comm_can_transmit_eid(uint32_t id, const uint8_t *data, uint8_t len)
+ {
+-    if (!s_init_done) return;
+-    if (len > 8) len = 8;
+-
+-    twai_message_t tx_msg = {0};
+-    tx_msg.extd            = 1;
+-    tx_msg.identifier      = id;
+-    tx_msg.data_length_code = len;
+-    memcpy(tx_msg.data, data, len);
+-
++    if (!s_init_done || !s_send_mutex) return;
+     xSemaphoreTake(s_send_mutex, portMAX_DELAY);
+-    if (!s_init_done) {
+-        xSemaphoreGive(s_send_mutex);
+-        return;
+-    }
+-    twai_transmit(&tx_msg, pdMS_TO_TICKS(5));
++    (void)transmit_eid_locked(id, data, len);
+     xSemaphoreGive(s_send_mutex);
+ }
+ 
+-void comm_can_send_buffer(uint8_t controller_id, const uint8_t *data,
++static esp_err_t send_buffer_locked(uint8_t controller_id, const uint8_t *data,
+                           unsigned int len, uint8_t send)
+ {
+     uint8_t send_buffer[8];
++    esp_err_t err;
+ 
+     if (len <= 6) {
+         uint32_t ind = 0;
+@@ -257,10 +271,10 @@
+         send_buffer[ind++] = send;
+         memcpy(send_buffer + ind, data, len);
+         ind += len;
+-        comm_can_transmit_eid(controller_id |
++        err = transmit_eid_locked(controller_id |
+                               ((uint32_t)CAN_PACKET_PROCESS_SHORT_BUFFER << 8),
+                               send_buffer, ind);
+-        return;
++        return err;
+     }
+ 
+     unsigned int end_a = 0;
+@@ -277,9 +291,10 @@
+             send_len = (uint8_t)(len - i);
+             memcpy(send_buffer + 1, data + i, send_len);
+         }
+-        comm_can_transmit_eid(controller_id |
++        err = transmit_eid_locked(controller_id |
+                               ((uint32_t)CAN_PACKET_FILL_RX_BUFFER << 8),
+                               send_buffer, send_len + 1);
++        if (err != ESP_OK) return err;
+     }
+ 
+     for (unsigned int i = end_a; i < len; i += 6) {
+@@ -293,9 +308,10 @@
+             send_len = (uint8_t)(len - i);
+             memcpy(send_buffer + 2, data + i, send_len);
+         }
+-        comm_can_transmit_eid(controller_id |
++        err = transmit_eid_locked(controller_id |
+                               ((uint32_t)CAN_PACKET_FILL_RX_BUFFER_LONG << 8),
+                               send_buffer, send_len + 2);
++        if (err != ESP_OK) return err;
+     }
+ 
+     uint32_t ind = 0;
+@@ -307,9 +323,27 @@
+     send_buffer[ind++] = (uint8_t)(crc >> 8);
+     send_buffer[ind++] = (uint8_t)(crc & 0xFF);
+ 
+-    comm_can_transmit_eid(controller_id |
++    err = transmit_eid_locked(controller_id |
+                           ((uint32_t)CAN_PACKET_PROCESS_RX_BUFFER << 8),
+                           send_buffer, ind);
++    return err;
++}
++
++static esp_err_t send_buffer_checked(uint8_t controller_id, const uint8_t *data,
++                                     unsigned int len, uint8_t send)
++{
++    if (!data || !len || len > UINT16_MAX) return ESP_ERR_INVALID_ARG;
++    if (!s_init_done || !s_send_mutex) return ESP_ERR_INVALID_STATE;
++    xSemaphoreTake(s_send_mutex, portMAX_DELAY);
++    esp_err_t err = send_buffer_locked(controller_id, data, len, send);
++    xSemaphoreGive(s_send_mutex);
++    return err;
++}
++
++void comm_can_send_buffer(uint8_t controller_id, const uint8_t *data,
++                          unsigned int len, uint8_t send)
++{
++    (void)send_buffer_checked(controller_id, data, len, send);
+ }
+ 
+ void comm_can_send_buffer_sync(uint8_t controller_id, const uint8_t *data,
+@@ -326,8 +360,9 @@
+      * reply to be reassembled and delivered before returning, so the caller
+      * won't fire the next poll while this reply is still streaming in. */
+     xSemaphoreTake(s_rx_done_sem, 0);
+-    comm_can_send_buffer(controller_id, data, len, send);
+-    xSemaphoreTake(s_rx_done_sem, pdMS_TO_TICKS(reply_timeout_ms));
++    if (send_buffer_checked(controller_id, data, len, send) == ESP_OK) {
++        xSemaphoreTake(s_rx_done_sem, pdMS_TO_TICKS(reply_timeout_ms));
++    }
+ }
+ 
+ uint8_t comm_can_get_local_id(void)
+@@ -502,6 +537,26 @@
+     uint8_t       id  = eid & 0xFF;
+     CAN_PACKET_ID cmd = (CAN_PACKET_ID)(eid >> 8);
+ 
++    /* Validate before reading any offset, length, or status field. */
++    if (!data8 || len < 0 || len > 8) return;
++    int minimum = 0;
++    switch (cmd) {
++    case CAN_PACKET_FILL_RX_BUFFER: minimum = 2; break;
++    case CAN_PACKET_FILL_RX_BUFFER_LONG: minimum = 3; break;
++    case CAN_PACKET_PROCESS_RX_BUFFER: minimum = 6; break;
++    case CAN_PACKET_PROCESS_SHORT_BUFFER: minimum = 3; break;
++    case CAN_PACKET_PING:
++    case CAN_PACKET_PONG: minimum = 1; break;
++    case CAN_PACKET_STATUS:
++    case CAN_PACKET_STATUS_2:
++    case CAN_PACKET_STATUS_3:
++    case CAN_PACKET_STATUS_4:
++    case CAN_PACKET_STATUS_6: minimum = 8; break;
++    case CAN_PACKET_STATUS_5: minimum = 6; break;
++    default: break;
++    }
++    if (len < minimum) return;
++
+     /* Messages addressed to us (or broadcast). */
+     if (id == 255 || id == s_can_config.controller_id) {
+         switch (cmd) {
+@@ -564,7 +619,6 @@
+ 
+             int rxbuf_len = (int)data8[ind++] << 8;
+             rxbuf_len    |= (int)data8[ind++];
+-            if (rxbuf_len > RX_BUFFER_SIZE) break;
+ 
+             int buf_ind = -1;
+             for (int i = 0; i < RX_BUFFER_NUM; i++) {
+@@ -572,6 +626,10 @@
+             }
+             if (buf_ind < 0) break;
+ 
++            if (rxbuf_len == 0 || rxbuf_len > RX_BUFFER_SIZE) {
++                s_rx_buffer_device_id[buf_ind] = -1;
++                break;
++            }
+             crc_high = data8[ind++];
+             crc_low  = data8[ind++];
+ 
+@@ -579,6 +637,7 @@
+                 ((unsigned short)crc_high << 8 | (unsigned short)crc_low)) {
+                 if (!serve_request(s_rx_buffer[buf_ind], rxbuf_len, last_id) &&
+                     s_packet_handler) {
++                    s_packet_sender_id = last_id;
+                     s_packet_handler(s_rx_buffer[buf_ind], rxbuf_len);
+                 }
+             } else {
+@@ -601,6 +660,7 @@
+ 
+             if (!serve_request(data8 + ind, len - ind, last_id) &&
+                 s_packet_handler) {
++                s_packet_sender_id = last_id;
+                 s_packet_handler(data8 + ind, len - ind);
+             }
+             if (s_rx_done_sem) xSemaphoreGive(s_rx_done_sem);
+@@ -790,6 +850,16 @@
+     vTaskDelete(NULL);
+ }
+ 
++/* Copying the ring entry before releasing its slot prevents rx_task from
++ * replacing the frame while the decoder/packet callback is still using it. */
++static void process_received_frame(const twai_message_t *msg)
++{
++    if (msg->extd && !msg->rtr && msg->data_length_code <= 8) {
++        twai_message_t frame = *msg;
++        decode_msg(frame.identifier, frame.data, frame.data_length_code);
++    }
++}
++
+ static void process_task(void *arg)
+ {
+     (void)arg;
+@@ -800,14 +870,12 @@
+          * collapses into one wake, then the drain loop below empties it all. */
+         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10));
+         while (s_rx_read != s_rx_write) {
+-            twai_message_t *msg = &s_rx_buf[s_rx_read];
++            twai_message_t msg = s_rx_buf[s_rx_read];
+             int next_read = s_rx_read + 1;
+             if (next_read >= RXBUF_LEN) next_read = 0;
+             s_rx_read = next_read;
+ 
+-            if (msg->extd) {
+-                decode_msg(msg->identifier, msg->data, msg->data_length_code);
+-            }
+-        }
+-    }
+-}
++            process_received_frame(&msg);
++        }
++    }
++}
+--- a/components/vesc_can/vesc_ride_mode.c
++++ b/components/vesc_can/vesc_ride_mode.c
+@@ -58,12 +58,17 @@
+ typedef struct {
+     vrm_req_kind_t     kind;
+     uint16_t           seq;
++    uint32_t           generation;
+     uint8_t            profile;   /* SELECT only */
+     vesc_ride_config_t cfg;       /* SET only */
+ } vrm_req_t;
+ 
+ static uint8_t           s_target_vesc_id = 10;
+ static SemaphoreHandle_t s_lock;
++/* TX mutex is never taken by RX; state mutex is released before CAN waits. */
++static SemaphoreHandle_t s_tx_lock;
++static uint32_t s_generation;
++static uint16_t s_query_seq, s_write_seq;
+ static QueueHandle_t     s_req_q;
+ 
+ /* Guarded by s_lock. */
+@@ -106,38 +111,39 @@
+ 
+ void vesc_ride_mode_init(uint8_t target_vesc_id)
+ {
+-    s_target_vesc_id = target_vesc_id;
+-    if (!s_lock)  s_lock  = xSemaphoreCreateMutex();
++    if (!s_lock) s_lock = xSemaphoreCreateMutex();
++    if (!s_tx_lock) s_tx_lock = xSemaphoreCreateMutex();
+     if (!s_req_q) s_req_q = xQueueCreate(VRM_REQ_QUEUE_LEN, sizeof(vrm_req_t));
+-
+-    s_screen_active      = false;
+-    s_polls_paused       = false;
+-    s_last_status_ms     = 0;
+-    s_last_config_req_ms = 0;
+-    s_first_req_ms       = 0;
+-
+-    if (s_lock && xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
++    vesc_ride_mode_set_target(target_vesc_id);
++}
++
++void vesc_ride_mode_set_target(uint8_t target_vesc_id)
++{
++    if (!s_tx_lock || !s_lock ||
++        xSemaphoreTake(s_tx_lock, portMAX_DELAY) != pdTRUE) return;
++    if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
++        s_target_vesc_id = target_vesc_id;
++        ++s_generation;
++        if (s_req_q) xQueueReset(s_req_q);
+         memset(&s_config, 0, sizeof s_config);
+         memset(&s_status, 0, sizeof s_status);
+-        s_have_config = false;
+-        s_have_status = false;
+-        s_pending_seq = 0;
+-        s_epoch       = 0;
++        s_have_config = s_have_status = false;
++        s_pending_seq = s_query_seq = s_write_seq = 0;
++        s_last_status_ms = s_last_config_req_ms = s_first_req_ms = 0;
++        ++s_epoch;
++        /* Never reset sequences: replies from the previous node may arrive. */
+         xSemaphoreGive(s_lock);
+     }
+-}
+-
+-void vesc_ride_mode_set_target(uint8_t target_vesc_id)
+-{
+-    s_target_vesc_id = target_vesc_id;
++    xSemaphoreGive(s_tx_lock);
+ }
+ 
+ void vesc_ride_mode_set_screen_active(bool active)
+ {
+-    s_screen_active = active;
+-    /* Ask straight away rather than waiting out the retry interval: the editor
+-     * has nothing to draw until config lands. */
+-    if (active) s_last_config_req_ms = 0;
++    if (s_lock && xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
++        s_screen_active = active;
++        if (active) s_last_config_req_ms = 0;
++        xSemaphoreGive(s_lock);
++    }
+ }
+ 
+ void vesc_ride_mode_polls_pause(bool paused)
+@@ -147,10 +153,20 @@
+ 
+ /* ---------------------------------------------------------------- requests */
+ 
+-static bool enqueue(const vrm_req_t *req)
+-{
+-    if (!s_req_q) return false;
+-    return xQueueSend(s_req_q, req, 0) == pdTRUE;
++static bool enqueue(vrm_req_t *req)
++{
++    if (!s_req_q || !s_lock ||
++        xSemaphoreTake(s_lock, portMAX_DELAY) != pdTRUE) return false;
++    req->generation = s_generation;
++    const bool ok = xQueueSend(s_req_q, req, 0) == pdTRUE;
++    if (ok && req->kind == VRM_REQ_SET) {
++        s_pending_seq = req->seq;
++        s_config.last_result = VESC_RIDE_RESULT_OK;
++        s_config.response_seq = 0;
++        s_config.epoch = ++s_epoch;
++    }
++    xSemaphoreGive(s_lock);
++    return ok;
+ }
+ 
+ bool vesc_ride_mode_request_config(void)
+@@ -190,15 +206,6 @@
+     r.cfg  = *cfg;
+     if (!enqueue(&r)) return false;
+ 
+-    if (s_lock && xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
+-        s_pending_seq = r.seq;
+-        /* The previous answer is not this one. Clearing it stops the screen
+-         * showing an OK that belongs to the edit before this. */
+-        s_config.last_result  = VESC_RIDE_RESULT_OK;
+-        s_config.response_seq = 0;
+-        s_config.epoch        = ++s_epoch;
+-        xSemaphoreGive(s_lock);
+-    }
+     if (seq_out) *seq_out = r.seq;
+     return true;
+ }
+@@ -220,6 +227,23 @@
+ 
+ /* ------------------------------------------------------------------ sending */
+ 
++static void send_packet(uint8_t *buf, unsigned len, uint16_t seq)
++{
++    if (xSemaphoreTake(s_lock, portMAX_DELAY) != pdTRUE) return;
++    if (buf[3] == VRM_MSG_REQ_CONFIG) s_query_seq = seq;
++    if (buf[3] == VRM_MSG_SET_CONFIG) {
++        s_write_seq = seq;
++        s_query_seq = 0;
++    }
++    const uint8_t target = s_target_vesc_id;
++    const uint32_t now = millis_now();
++    if (!s_first_req_ms) s_first_req_ms = now ? now : 1;
++    if (buf[3] == VRM_MSG_REQ_STATUS) s_last_status_ms = now;
++    else s_last_config_req_ms = now;
++    xSemaphoreGive(s_lock);
++    comm_can_send_buffer_sync(target, buf, len, 0, 60);
++}
++
+ static void send_get(uint16_t seq)
+ {
+     uint8_t buf[8];
+@@ -230,7 +254,7 @@
+     buf[ind++] = VRM_MSG_REQ_CONFIG;
+     buf[ind++] = comm_can_get_local_id();
+     buffer_append_uint16(buf, seq, &ind);
+-    comm_can_send_buffer_sync(s_target_vesc_id, buf, (unsigned int)ind, 0, 60);
++    send_packet(buf, (unsigned int)ind, seq);
+ }
+ 
+ static void send_select(uint16_t seq, uint8_t profile)
+@@ -244,7 +268,7 @@
+     buf[ind++] = comm_can_get_local_id();
+     buffer_append_uint16(buf, seq, &ind);
+     buf[ind++] = profile;
+-    comm_can_send_buffer_sync(s_target_vesc_id, buf, (unsigned int)ind, 0, 60);
++    send_packet(buf, (unsigned int)ind, seq);
+ }
+ 
+ static void send_set(uint16_t seq, const vesc_ride_config_t *cfg)
+@@ -265,7 +289,7 @@
+     buf[ind++] = cfg->reverse_enabled ? 1u : 0u;
+     buffer_append_uint16(buf, cfg->reverse_speed_dkmh, &ind);
+     buffer_append_uint16(buf, cfg->reverse_current_dA, &ind);
+-    comm_can_send_buffer_sync(s_target_vesc_id, buf, (unsigned int)ind, 0, 60);
++    send_packet(buf, (unsigned int)ind, seq);
+ }
+ 
+ /* A read-only poll. The first version of this re-SELECTed the profile it had
+@@ -282,49 +306,36 @@
+     buf[ind++] = VLP_MAGIC1;
+     buf[ind++] = VRM_MSG_REQ_STATUS;
+     buf[ind++] = comm_can_get_local_id();
+-    comm_can_send_buffer_sync(s_target_vesc_id, buf, (unsigned int)ind, 0, 60);
++    send_packet(buf, (unsigned int)ind, 0);
+ }
+ 
+ void vesc_ride_mode_poll_loop(void)
+ {
+-    if (s_polls_paused) return;
+-
++    if (s_polls_paused || !s_tx_lock || !s_lock ||
++        xSemaphoreTake(s_tx_lock, portMAX_DELAY) != pdTRUE) return;
++    vrm_req_t r;
++    for (unsigned count = 0; count < VRM_REQ_QUEUE_LEN && !s_polls_paused &&
++         s_req_q && xQueueReceive(s_req_q, &r, 0) == pdTRUE; ++count) {
++        if (r.generation != s_generation) continue;
++        switch (r.kind) {
++        case VRM_REQ_GET: send_get(r.seq); break;
++        case VRM_REQ_SET: send_set(r.seq, &r.cfg); break;
++        case VRM_REQ_SELECT: send_select(r.seq, r.profile); break;
++        }
++    }
+     const uint32_t now = millis_now();
+-
+-    /* Queued work first: a Save the rider is waiting on beats a status poll. */
+-    vrm_req_t r;
+-    while (s_req_q && xQueueReceive(s_req_q, &r, 0) == pdTRUE) {
+-        if (!s_first_req_ms) s_first_req_ms = now ? now : 1;
+-        switch (r.kind) {
+-        case VRM_REQ_GET:    send_get(r.seq);               break;
+-        case VRM_REQ_SET:    send_set(r.seq, &r.cfg);       break;
+-        case VRM_REQ_SELECT: send_select(r.seq, r.profile); break;
+-        }
+-        s_last_config_req_ms = now;
+-    }
+-
+-    bool have_cfg = false;
+-    if (s_lock && xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
+-        have_cfg = s_have_config;
++    bool get = false, status = false;
++    if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
++        get = s_screen_active && !s_have_config &&
++              now - s_last_config_req_ms >= VRM_CONFIG_RETRY_MS;
++        status = now - s_last_status_ms >= VRM_STATUS_INTERVAL_MS;
+         xSemaphoreGive(s_lock);
+-    } else {
+-        return;
+-    }
+-
+-    /* Keep asking only while somebody is looking and nothing has answered. */
+-    if (s_screen_active && !have_cfg &&
+-        now - s_last_config_req_ms >= VRM_CONFIG_RETRY_MS) {
+-        s_last_config_req_ms = now;
+-        if (!s_first_req_ms) s_first_req_ms = now ? now : 1;
+-        send_get(next_seq());
+-        return;
+-    }
+-
+-    if (now - s_last_status_ms >= VRM_STATUS_INTERVAL_MS) {
+-        s_last_status_ms = now;
+-        if (!s_first_req_ms) s_first_req_ms = now ? now : 1;
+-        send_status_req();
+-    }
++    }
++    if (!s_polls_paused) {
++        if (get) send_get(next_seq());
++        else if (status) send_status_req();
++    }
++    xSemaphoreGive(s_tx_lock);
+ }
+ 
+ /* ---------------------------------------------------------------- responses */
+@@ -340,16 +351,18 @@
+         if (!vesc_ride_mode_parse_config(data, len, &cfg)) return;
+ 
+         if (s_lock && xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
+-            /* Only the reply to the submission still outstanding may resolve
+-             * it; anything else would report someone else's answer as ours.
+-             * An unsolicited reply still refreshes the numbers -- it is the
+-             * current config either way -- but leaves the pending Save
+-             * waiting and keeps the result it is waiting for. */
+-            const bool answers_pending =
+-                s_pending_seq != 0 && cfg.response_seq == s_pending_seq;
+-            if (!answers_pending && s_pending_seq != 0) {
++            const bool query = s_query_seq && cfg.response_seq == s_query_seq;
++            const bool write = s_write_seq && cfg.response_seq == s_write_seq;
++            if (!query && !write) {
++                xSemaphoreGive(s_lock);
++                return;
++            }
++            if (query) s_query_seq = 0;
++            if (write) s_write_seq = 0;
++            const bool answers_pending = write && s_pending_seq == cfg.response_seq;
++            if (!answers_pending && s_pending_seq) {
+                 cfg.response_seq = s_config.response_seq;
+-                cfg.last_result  = s_config.last_result;
++                cfg.last_result = s_config.last_result;
+             }
+             if (answers_pending) s_pending_seq = 0;
+             if (cfg.valid || !s_have_config) {
+--- /dev/null
++++ b/scripts/test_can_integration.py
+@@ -0,0 +1,129 @@
++"""Host regression of actual main dispatch/target callbacks and BSP mux writes.
++
++Run from the S3 root: python scripts/test_can_integration.py --cc <host-gcc>
++No hardware access; this does not emulate I2C electrical behavior or FreeRTOS.
++"""
++import argparse
++import os
++from pathlib import Path
++import re
++import subprocess
++
++
++def function(source, name):
++    match = re.search(r'^(?:static )?(?:void|esp_err_t) ' + name + r'\([^;]*?\)\s*\{', source, re.M)
++    if not match:
++        raise ValueError(f'Function not found: {name}')
++    start = match.start()
++    depth = 1
++    i = match.end()
++    while depth:
++        if source[i] == '{':
++            depth += 1
++        elif source[i] == '}':
++            depth -= 1
++        i += 1
++    return source[start:i]
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument('--cc', default='gcc')
++    ap.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[1])
++    ap.add_argument('--out', type=Path, default=Path('build/can_host_tests'))
++    args = ap.parse_args()
++    root = args.root.resolve()
++    args.out.mkdir(parents=True, exist_ok=True)
++    main_c = (root / 'main/main.c').read_text(encoding='utf-8')
++    bsp = (root / 'components/bsp_board/waveshare_esp32_s3_touch_lcd_7.c').read_text(encoding='utf-8')
++    pins = (root / 'components/bsp_board/include/bsp/waveshare_esp32_s3_touch_lcd_7.h').read_text(encoding='utf-8')
++    pin_def = re.search(r'^#define BSP_EXIO_USB_SEL\s+[^\n]+', pins, re.M).group(0)
++    latch = re.search(r'^static uint8_t\s+ioext_shadow\s*=[^;]+;', bsp, re.M).group(0)
++    preamble = r'''
++#include <assert.h>
++#include <stdbool.h>
++#include <stdint.h>
++#include <stdio.h>
++typedef int esp_err_t;
++#define ESP_OK 0
++#define ESP_FAIL -1
++#define ESP_LOGI(...) ((void)0)
++#define ESP_RETURN_ON_ERROR(expr, ...) do { int e = (expr); if(e) return e; } while(0)
++#define CONFIG_VESC_CAN_RT_INTERVAL_MS 100
++#define CONFIG_VESC_CAN_LISP_INTERVAL_MS 100
++#define BSP_IOEXT_REG_OUTPUT 3
++static uint8_t target = 10, sender, targets[6], output;
++static unsigned calls, ride_calls, ble_calls;
++static bool i2c_fail;
++static int ioext_init(void) { return ESP_OK; }
++static int ioext_write(uint8_t reg, uint8_t value) {
++    assert(reg == BSP_IOEXT_REG_OUTPUT);
++    if (i2c_fail) return ESP_FAIL;
++    output = value; return ESP_OK;
++}
++static uint8_t settings_get_target_vesc_id(void) { return target; }
++static uint8_t comm_can_get_packet_sender_id(void) { return sender; }
++#define TARGET_INIT(name, slot) static void name(uint8_t id, int ms) { (void)ms; targets[slot] = id; }
++#define TARGET_SET(name, slot) static void name(uint8_t id) { targets[slot] = id; }
++TARGET_INIT(vesc_rt_data_init, 0)
++TARGET_INIT(vesc_lisp_poll_init, 1)
++TARGET_INIT(vesc_io_data_init, 2)
++TARGET_SET(vesc_lisp_code_set_target, 3)
++TARGET_SET(vesc_lisp_panel_set_target, 4)
++TARGET_SET(vesc_ride_mode_set_target, 5)
++#define HANDLER(name) static void name(const uint8_t *p, unsigned n) { assert(p && n == 4); ++calls; }
++HANDLER(vesc_rt_data_process_response)
++HANDLER(vesc_lisp_poll_process_response)
++HANDLER(vesc_lisp_console_process_response)
++HANDLER(vesc_io_data_process_response)
++HANDLER(vesc_lisp_code_process_response)
++HANDLER(vesc_config_transport_process_response)
++HANDLER(vesc_lisp_panel_process_response)
++static void vesc_ride_mode_process_response(const uint8_t *p, unsigned n) { assert(p && n == 4); ++ride_calls; }
++static void ble_nus_forward_response(const uint8_t *p, uint16_t n) { assert(p && n == 4); ++ble_calls; }
++'''
++    checks = r'''
++int main(void) {
++    const uint8_t packet[4] = {36, 'V', 'P', 0x89};
++    assert(!(ioext_shadow & BSP_EXIO_USB_SEL));
++    assert(bsp_exio_set(1u << 3, false) == ESP_OK);
++    assert(!(output & BSP_EXIO_USB_SEL));
++    assert(bsp_exio_set(1u << 3, true) == ESP_OK);
++    assert(!(output & BSP_EXIO_USB_SEL));
++    assert(bsp_can_mux_enable() == ESP_OK);
++    assert(output & BSP_EXIO_USB_SEL);
++    assert(bsp_exio_set(1u << 4, false) == ESP_OK);
++    assert(output & BSP_EXIO_USB_SEL);
++    uint8_t previous = ioext_shadow;
++    i2c_fail = true;
++    assert(bsp_exio_set(BSP_EXIO_USB_SEL, false) == ESP_FAIL);
++    assert(ioext_shadow == previous);
++    i2c_fail = false;
++    on_target_id_changed(23);
++    for (unsigned i = 0; i < 6; ++i) assert(targets[i] == 23);
++    target = 23; sender = 10;
++    vesc_packet_dispatch(packet, sizeof packet);
++    assert(ride_calls == 0 && ble_calls == 1 && calls == 7);
++    sender = 23;
++    vesc_packet_dispatch(packet, sizeof packet);
++    assert(ride_calls == 1 && ble_calls == 2 && calls == 14);
++    puts("CAN integration: mux state, failed I2C write, six target routes, stale-sender rejection and BLE forwarding PASS");
++    return 0;
++}
++'''
++    text = preamble + '\n' + pin_def + '\n' + latch + '\n'
++    text += function(bsp, 'bsp_exio_set') + '\n' + function(bsp, 'bsp_can_mux_enable') + '\n'
++    text += function(main_c, 'on_target_id_changed') + '\n' + function(main_c, 'vesc_packet_dispatch') + '\n' + checks
++    c_file = args.out / 'test_can_integration.c'
++    exe = args.out / ('test_can_integration.exe' if os.name == 'nt' else 'test_can_integration')
++    c_file.write_text(text, encoding='utf-8')
++    env = os.environ.copy()
++    compiler = Path(args.cc)
++    if compiler.is_absolute():
++        env['PATH'] = str(compiler.parent) + os.pathsep + env.get('PATH', '')
++    subprocess.run([args.cc, '-std=c11', '-Wall', '-Wextra', str(c_file), '-o', str(exe)], check=True, env=env)
++    subprocess.run([str(exe.resolve())], check=True, env=env)
++
++
++if __name__ == '__main__':
++    main()
+--- /dev/null
++++ b/scripts/test_can_host.py
+@@ -0,0 +1,35 @@
++"""Run only after the user approves compilation. Host tests, no flash.
++
++python scripts/test_can_host.py --cc <host-gcc>
++"""
++import argparse
++import os
++from pathlib import Path
++import subprocess
++import sys
++
++ap = argparse.ArgumentParser(description=__doc__)
++ap.add_argument('--cc', default='gcc')
++args = ap.parse_args()
++root = Path(__file__).resolve().parents[1]
++out = root / 'build/can_host_tests'
++out.mkdir(parents=True, exist_ok=True)
++env = os.environ.copy()
++compiler = Path(args.cc)
++if compiler.is_absolute():
++    env['PATH'] = str(compiler.parent) + os.pathsep + env.get('PATH', '')
++tests = [
++    ('comm_can', 'transport_mocks', ['components/vesc_can/buffer.c', 'components/vesc_can/crc.c']),
++    ('ride_target', 'ride_mocks', ['components/vesc_can/buffer.c', 'components/vesc_can/vesc_ride_mode_parse.c']),
++]
++for name, mocks, sources in tests:
++    exe = out / (name + ('.exe' if os.name == 'nt' else ''))
++    cmd = [args.cc, '-std=c11', '-Wall', '-Wextra',
++           '-I', 'scripts/tests/can/' + mocks,
++           '-I', 'components/vesc_can/include',
++           'scripts/tests/can/test_' + name + '.c', *sources, '-lm', '-o', str(exe)]
++    subprocess.run(cmd, cwd=root, env=env, check=True)
++    subprocess.run([str(exe)], cwd=root, env=env, check=True)
++subprocess.run([sys.executable, 'scripts/test_can_integration.py', '--cc', args.cc],
++               cwd=root, env=env, check=True)
++print('Host checks complete. No firmware build, hardware CAN or flash performed.')
+--- /dev/null
++++ b/scripts/tests/can/test_comm_can.c
+@@ -0,0 +1,64 @@
++#include <stdio.h>
++#include <string.h>
++#include <setjmp.h>
++#include "../../../components/vesc_can/comm_can.c"
++static int checks,callbacks;static uint8_t got[1024],sender;static unsigned got_len;
++#define CHECK(x) do{checks++;if(!(x)){fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x);return 1;}}while(0)
++static void packet(const uint8_t *p,unsigned n){callbacks++;assert(n<=sizeof(got));memcpy(got,p,n);got_len=n;sender=comm_can_get_packet_sender_id();}
++static void reset_tx(void){sent_count=tx_calls=lock_take=lock_give=wait_count=0;fail_at=-1;}
++static void reset_rx(void){for(int i=0;i<RX_BUFFER_NUM;i++){s_rx_buffer_device_id[i]=-1;memset(s_rx_buffer[i],0xA5,RX_BUFFER_SIZE);}callbacks=0;}
++int main(void){
++ CHECK(comm_can_start(20,19,2,500)==ESP_OK);comm_can_set_packet_handler(packet);
++ /* Every truncated packet is rejected without touching assembly or dispatch. */
++ const int cmds[]={5,6,7,8,17,18,9,14,15,16,58,27};const int mins[]={2,3,6,3,1,1,8,8,8,8,8,6};
++ uint8_t bytes[8]={10,1,0,0,0,0,0,0};
++ for(unsigned i=0;i<sizeof(cmds)/sizeof(cmds[0]);i++)for(int n=0;n<mins[i];n++){
++  reset_rx();reset_tx();decode_msg(((uint32_t)cmds[i]<<8)|2,bytes,n);
++  CHECK(callbacks==0&&sent_count==0);CHECK(s_rx_buffer_device_id[0]==-1);CHECK(s_rx_buffer[0][0]==0xA5);
++ }
++ decode_msg((CAN_PACKET_FILL_RX_BUFFER<<8)|2,NULL,8);decode_msg((CAN_PACKET_FILL_RX_BUFFER<<8)|2,bytes,-1);decode_msg((CAN_PACKET_FILL_RX_BUFFER<<8)|2,bytes,9);
++ uint8_t status5[]={0,0,0,123,1,244};decode_msg((CAN_PACKET_STATUS_5<<8)|10,status5,6);
++ CHECK(comm_can_get_status_msg_5_id(10)->tacho_value==123);CHECK(comm_can_get_status_msg_5_id(10)->v_in==50.0f);
++ uint8_t status1[]={0,0,3,232,0,123,1,244};decode_msg((CAN_PACKET_STATUS<<8)|10,status1,8);
++ CHECK(comm_can_get_status_msg_id(10)->rpm==1000.0f);CHECK(comm_can_get_status_msg_id(10)->duty==0.5f);
++ uint8_t short_reply[]={10,1,36,0x56,0x50};reset_rx();decode_msg((8<<8)|2,short_reply,5);CHECK(callbacks==1&&got_len==3&&sender==10&&got[0]==36);
++ /* Standard, remote and oversized DLC never reach VESC dispatch. */
++ twai_message_t frame={0};frame.identifier=(8<<8)|2;frame.data_length_code=5;memcpy(frame.data,short_reply,5);
++ reset_rx();process_received_frame(&frame);CHECK(callbacks==0);
++ frame.extd=true;frame.rtr=true;process_received_frame(&frame);CHECK(callbacks==0);
++ frame.rtr=false;frame.data_length_code=9;process_received_frame(&frame);CHECK(callbacks==0);
++ frame.data_length_code=5;process_received_frame(&frame);CHECK(callbacks==1&&sender==10);
++ unsigned sizes[]={1,6,7,255,256,259,260,1024};uint8_t payload[1024];for(unsigned i=0;i<sizeof(payload);i++)payload[i]=(uint8_t)(i*17+36);
++ for(unsigned j=0;j<sizeof(sizes)/sizeof(sizes[0]);j++){
++  unsigned len=sizes[j];reset_tx();reset_rx();comm_can_send_buffer(10,payload,len,1);
++  CHECK(lock_take==1&&lock_give==1);CHECK(sent_count>0);
++  uint8_t reconstructed[1024]={0};unsigned total=0;
++  for(int i=0;i<sent_count;i++){
++   twai_message_t *m=&sent[i];unsigned cmd=m->identifier>>8;CHECK(m->extd&&!m->rtr&&(m->identifier&255)==10&&m->data_length_code<=8);
++   if(cmd==5){unsigned off=m->data[0],n=m->data_length_code-1;CHECK(off+n<=len);memcpy(reconstructed+off,m->data+1,n);total+=n;}
++   if(cmd==6){unsigned off=(m->data[0]<<8)|m->data[1],n=m->data_length_code-2;CHECK(off+n<=len);memcpy(reconstructed+off,m->data+2,n);total+=n;}
++   if(cmd==7){CHECK((unsigned)((m->data[2]<<8)|m->data[3])==len);CHECK(((m->data[4]<<8)|m->data[5])==crc16(payload,len));}
++   if(cmd==8){memcpy(reconstructed,m->data+2,len);total=len;}
++   /* Readdress the exact wire frames as incoming replies; sender is 2. */
++   decode_msg((cmd<<8)|2,m->data,m->data_length_code);
++  }
++  CHECK(total==len&&!memcmp(payload,reconstructed,len));CHECK(callbacks==1&&got_len==len&&!memcmp(got,payload,len)&&sender==2);
++ }
++ /* CRC failure and invalid terminal lengths clear the occupied slot. */
++ reset_tx();comm_can_send_buffer(10,payload,20,1);int frame_count=sent_count;
++ for(int mode=0;mode<3;mode++){
++  reset_rx();for(int i=0;i<frame_count;i++){twai_message_t m=sent[i];if(i==frame_count-1){if(mode==0)m.data[5]^=1;if(mode==1)m.data[2]=m.data[3]=0;if(mode==2){m.data[2]=4;m.data[3]=1;}}decode_msg((m.identifier&~255u)|2,m.data,m.data_length_code);}
++  CHECK(callbacks==0&&s_rx_buffer_device_id[0]==-1);
++ }
++ /* A full fragmented packet owns one lock, failure aborts without terminal. */
++ reset_tx();comm_can_send_buffer(10,payload,1024,0);int count=sent_count;
++ for(int f=0;f<count;f++){
++  reset_tx();fail_at=f;comm_can_send_buffer_sync(10,payload,1024,0,60);
++  CHECK(tx_calls==f+1&&sent_count==f);CHECK(lock_take==1&&lock_give==1&&wait_count==0);
++  for(int i=0;i<sent_count;i++)CHECK((sent[i].identifier>>8)!=7);
++ }
++ reset_tx();comm_can_send_buffer_sync(10,payload,7,0,60);CHECK(wait_count==1&&lock_take==1&&lock_give==1);
++ reset_tx();comm_can_send_buffer(10,NULL,2,0);comm_can_send_buffer(10,payload,0,0);comm_can_send_buffer(10,payload,65536,0);CHECK(sent_count==0&&lock_take==0);
++ comm_can_transmit_eid(10,payload,9);comm_can_transmit_eid(10,NULL,3);CHECK(sent_count==0&&lock_take==lock_give);
++ printf("PASS %d checks: framing, boundaries, sender routing, malformed DLC, CRC, transaction lock and TX failures\n",checks);return 0;
++}
+--- /dev/null
++++ b/scripts/tests/can/test_ride_target.c
+@@ -0,0 +1,98 @@
++#include <assert.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include "../../../components/vesc_can/vesc_ride_mode.c"
++
++static unsigned checks, sent;
++static uint32_t clock_ms;
++static uint8_t last_target, last_packet[64];
++static unsigned last_len;
++static bool immediate_reply;
++static struct { unsigned size, count; unsigned char data[4][128]; } q;
++static int mutexes[4], mutex_count;
++#define CHECK(x) do { assert(x); ++checks; } while (0)
++int64_t esp_timer_get_time(void) { return (int64_t)clock_ms * 1000; }
++SemaphoreHandle_t xSemaphoreCreateMutex(void) { return &mutexes[mutex_count++]; }
++int xSemaphoreTake(SemaphoreHandle_t m, TickType_t t) {
++    (void)t; assert(!*m); *m=1; return pdTRUE;
++}
++int xSemaphoreGive(SemaphoreHandle_t m) { assert(*m); *m=0; return pdTRUE; }
++QueueHandle_t xQueueCreate(unsigned n, unsigned size) {
++    assert(n==4 && size<=128); q.size=size; return &q;
++}
++int xQueueReset(QueueHandle_t h) { (void)h; q.count=0; return pdTRUE; }
++int xQueueSend(QueueHandle_t h,const void *p,TickType_t t) {
++    (void)h;(void)t; if(q.count==4)return 0;
++    memcpy(q.data[q.count++],p,q.size);return pdTRUE;
++}
++int xQueueReceive(QueueHandle_t h,void *p,TickType_t t) {
++    (void)h;(void)t;if(!q.count)return 0;
++    memcpy(p,q.data[0],q.size);--q.count;
++    memmove(q.data[0],q.data[1],q.count*sizeof q.data[0]);return pdTRUE;
++}
++uint8_t comm_can_get_local_id(void) {return 2;}
++static void reply(uint16_t seq) {
++    uint8_t b[28]={36,'V','P',VRM_MSG_CONFIG}; int32_t i=4;
++    buffer_append_uint16(b,seq,&i); b[i++]=0; b[i++]=1;
++    buffer_append_uint16(b,1,&i);
++    for(unsigned m=0;m<3;m++) {
++        buffer_append_uint16(b,100+100*m,&i);
++        buffer_append_uint16(b,300+300*m,&i);
++    }
++    b[i++]=1;buffer_append_uint16(b,50,&i);buffer_append_uint16(b,100,&i);b[i++]=0;
++    assert(i==28);vesc_ride_mode_process_response(b,sizeof b);
++}
++void comm_can_send_buffer_sync(uint8_t id,const uint8_t *d,unsigned n,uint8_t send,uint32_t timeout) {
++    (void)send;(void)timeout;CHECK(*s_lock==0);CHECK(*s_tx_lock==1);
++    ++sent;last_target=id;last_len=n;memcpy(last_packet,d,n);
++    if(immediate_reply && (d[3]==VRM_MSG_REQ_CONFIG || d[3]==VRM_MSG_SET_CONFIG))
++        reply((uint16_t)((d[5]<<8)|d[6]));
++}
++int main(void) {
++    vesc_ride_config_t c; uint16_t seq;
++    vesc_ride_mode_init(10);
++    CHECK(vesc_ride_mode_request_config());
++    vesc_ride_mode_poll_loop();
++    CHECK(sent==1 && last_target==10 && last_packet[3]==VRM_MSG_REQ_CONFIG);
++    const uint16_t oldseq=s_query_seq;
++    reply(oldseq);CHECK(vesc_ride_mode_get_config(&c));
++    CHECK(vesc_ride_mode_set_config(&c,&seq));
++    CHECK(vesc_ride_mode_select(2,NULL));
++    CHECK(q.count==2 && s_pending_seq==seq);
++    vrm_req_t delayed; memcpy(&delayed,q.data[0],q.size);
++    vesc_ride_mode_set_screen_active(true);
++    vesc_ride_mode_set_target(11);
++    CHECK(s_screen_active);
++    CHECK(!q.count && !s_pending_seq && !s_have_config && !s_have_status);
++    CHECK(!s_first_req_ms && !s_last_config_req_ms && !s_last_status_ms);
++    /* Even a request removed just before generation changed cannot send. */
++    CHECK(xQueueSend(s_req_q,&delayed,0));
++    vesc_ride_mode_poll_loop();CHECK(sent==1);
++    reply(oldseq);CHECK(!s_have_config);
++    CHECK(vesc_ride_mode_request_config());
++    vesc_ride_mode_poll_loop();CHECK(sent==2 && last_target==11);
++    CHECK(s_query_seq!=oldseq);reply(oldseq);CHECK(!s_have_config);
++    reply(s_query_seq);CHECK(vesc_ride_mode_get_config(&c));
++    const unsigned epoch=s_epoch;reply(oldseq);CHECK(s_epoch==epoch);
++    immediate_reply=true;
++    CHECK(vesc_ride_mode_set_config(&c,&seq));CHECK(s_pending_seq==seq);
++    vesc_ride_mode_poll_loop();
++    CHECK(!s_pending_seq && !s_write_seq && s_config.response_seq==seq);
++    CHECK(last_target==11 && last_packet[3]==VRM_MSG_SET_CONFIG);
++    CHECK(last_len==25 && last_packet[7]==1); /* unchanged format1 wire */
++    CHECK(vesc_ride_mode_select(1,NULL));vesc_ride_mode_poll_loop();
++    CHECK(last_target==11 && last_packet[3]==VRM_MSG_SELECT_MODE);
++    vesc_ride_mode_polls_pause(true);clock_ms=1000;
++    unsigned before=sent;vesc_ride_mode_poll_loop();CHECK(sent==before);
++    vesc_ride_mode_polls_pause(false);vesc_ride_mode_poll_loop();CHECK(sent==before+1);
++    for(unsigned n=0;n<4;n++) CHECK(vesc_ride_mode_select(0,NULL));
++    const uint16_t pending_before=s_pending_seq;
++    CHECK(!vesc_ride_mode_set_config(&c,&seq));
++    CHECK(!seq && s_pending_seq==pending_before);
++    vesc_ride_mode_set_target(12);CHECK(!q.count);
++    CHECK(vesc_ride_mode_request_config());vesc_ride_mode_poll_loop();
++    CHECK(last_target==12 && s_have_config); /* immediate RX during TX lock */
++    printf("ride target: %u checks passed\n",checks);
++    return 0;
++}
+--- /dev/null
++++ b/scripts/tests/can/transport_mocks/esp_err.h
+@@ -0,0 +1 @@
++#include "mock_idf.h"
+--- /dev/null
++++ b/scripts/tests/can/transport_mocks/esp_log.h
+@@ -0,0 +1 @@
++#include "mock_idf.h"
+--- /dev/null
++++ b/scripts/tests/can/transport_mocks/esp_timer.h
+@@ -0,0 +1 @@
++#include "mock_idf.h"
+--- /dev/null
++++ b/scripts/tests/can/transport_mocks/mock_idf.h
+@@ -0,0 +1,61 @@
++#pragma once
++#include <stdint.h>
++#include <stdbool.h>
++#include <assert.h>
++#include <stddef.h>
++#include <stdarg.h>
++typedef int esp_err_t;
++#define ESP_OK 0
++#define ESP_FAIL -1
++#define ESP_ERR_INVALID_STATE 1
++#define ESP_ERR_INVALID_ARG 2
++static inline void mock_log(const char *tag,const char *fmt,...){(void)tag;(void)fmt;}
++#define ESP_LOGW(...) mock_log(__VA_ARGS__)
++#define ESP_LOGI(...) mock_log(__VA_ARGS__)
++#define ESP_LOGE(...) mock_log(__VA_ARGS__)
++static inline const char *esp_err_to_name(int e) { (void)e;return "mock"; }
++typedef int gpio_num_t;
++#define GPIO_NUM_NC -1
++#define TWAI_MODE_NORMAL 0
++#define TWAI_STATE_BUS_OFF 1
++#define TWAI_STATE_STOPPED 2
++typedef struct { int speed; } twai_timing_config_t;
++typedef struct { int unused; } twai_filter_config_t;
++typedef struct { int tx_io,rx_io,mode,tx_queue_len,rx_queue_len; } twai_general_config_t;
++#define TWAI_TIMING_CONFIG_125KBITS() {125}
++#define TWAI_TIMING_CONFIG_250KBITS() {250}
++#define TWAI_TIMING_CONFIG_500KBITS() {500}
++#define TWAI_TIMING_CONFIG_1MBITS() {1000}
++#define TWAI_FILTER_CONFIG_ACCEPT_ALL() {0}
++#define TWAI_GENERAL_CONFIG_DEFAULT(tx,rx,md) {tx,rx,md,0,0}
++typedef struct { bool extd,rtr; uint32_t identifier; uint8_t data_length_code,data[8]; } twai_message_t;
++typedef struct {int state;uint32_t tx_error_counter,bus_error_count;} twai_status_info_t;
++typedef struct {int mutex,held;} mock_sem;
++typedef mock_sem *SemaphoreHandle_t;
++typedef void *TaskHandle_t;
++typedef int BaseType_t;
++#define pdTRUE 1
++#define pdPASS 1
++#define portMAX_DELAY UINT32_MAX
++#define pdMS_TO_TICKS(ms) (ms)
++static mock_sem mock_sems[8];static int mock_sem_count,lock_take,lock_give,wait_count;
++static inline SemaphoreHandle_t xSemaphoreCreateBinary(void){return &mock_sems[mock_sem_count++];}
++static inline SemaphoreHandle_t xSemaphoreCreateMutex(void){SemaphoreHandle_t h=xSemaphoreCreateBinary();h->mutex=1;return h;}
++static inline int xSemaphoreTake(SemaphoreHandle_t h,uint32_t t){assert(h);if(h->mutex){assert(!h->held);h->held=1;lock_take++;}else if(t){for(int i=0;i<mock_sem_count;i++)assert(!mock_sems[i].held);wait_count++;}return 1;}
++static inline int xSemaphoreGive(SemaphoreHandle_t h){assert(h);if(h->mutex){assert(h->held);h->held=0;lock_give++;}return 1;}
++static inline int xTaskCreatePinnedToCore(void(*f)(void*),const char*n,int s,void*a,int p,TaskHandle_t*h,int c){(void)f;(void)n;(void)s;(void)a;(void)p;(void)c;if(h)*h=(void*)1;return 1;}
++static inline void vTaskDelay(int t){(void)t;}
++static inline void vTaskDelete(void*a){(void)a;}
++static inline uint32_t xTaskGetTickCount(void){return 123;}
++static inline void xTaskNotifyGive(TaskHandle_t h){(void)h;}
++static inline uint32_t ulTaskNotifyTake(int b,int t){(void)b;(void)t;return 0;}
++static inline int64_t esp_timer_get_time(void){return 123000;}
++static twai_message_t sent[12000];static int sent_count,tx_calls,fail_at=-1;
++static inline int twai_transmit(const twai_message_t*m,int t){(void)t;int held=0;for(int i=0;i<mock_sem_count;i++)held+=mock_sems[i].held;assert(held==1);if(tx_calls++==fail_at)return ESP_FAIL;sent[sent_count++]=*m;return ESP_OK;}
++static inline int twai_driver_install(const void*a,const void*b,const void*c){(void)a;(void)b;(void)c;return ESP_OK;}
++static inline int twai_start(void){return ESP_OK;}
++static inline int twai_stop(void){return ESP_OK;}
++static inline int twai_driver_uninstall(void){return ESP_OK;}
++static inline int twai_initiate_recovery(void){return ESP_OK;}
++static inline int twai_get_status_info(twai_status_info_t*s){s->state=0;s->tx_error_counter=s->bus_error_count=0;return ESP_OK;}
++static inline int twai_receive(twai_message_t*m,int t){(void)m;(void)t;return ESP_FAIL;}
+--- /dev/null
++++ b/scripts/tests/can/transport_mocks/driver/twai.h
+@@ -0,0 +1 @@
++#include "mock_idf.h"
+--- /dev/null
++++ b/scripts/tests/can/transport_mocks/freertos/FreeRTOS.h
+@@ -0,0 +1 @@
++#include "mock_idf.h"
+--- /dev/null
++++ b/scripts/tests/can/transport_mocks/freertos/semphr.h
+@@ -0,0 +1 @@
++#include "mock_idf.h"
+--- /dev/null
++++ b/scripts/tests/can/transport_mocks/freertos/task.h
+@@ -0,0 +1 @@
++#include "mock_idf.h"
+--- /dev/null
++++ b/scripts/tests/can/ride_mocks/esp_log.h
+@@ -0,0 +1,3 @@
++#pragma once
++#define ESP_LOGI(tag, ...) ((void)(tag))
++#define ESP_LOGW(tag, ...) ((void)(tag))
+--- /dev/null
++++ b/scripts/tests/can/ride_mocks/esp_timer.h
+@@ -0,0 +1,3 @@
++#pragma once
++#include <stdint.h>
++int64_t esp_timer_get_time(void);
+--- /dev/null
++++ b/scripts/tests/can/ride_mocks/freertos/FreeRTOS.h
+@@ -0,0 +1,9 @@
++#pragma once
++#include <stdint.h>
++typedef unsigned TickType_t;
++typedef int portMUX_TYPE;
++#define portMUX_INITIALIZER_UNLOCKED 0
++#define portENTER_CRITICAL(x) ((void)(x))
++#define portEXIT_CRITICAL(x) ((void)(x))
++#define portMAX_DELAY UINT32_MAX
++#define pdTRUE 1
+--- /dev/null
++++ b/scripts/tests/can/ride_mocks/freertos/queue.h
+@@ -0,0 +1,7 @@
++#pragma once
++#include "FreeRTOS.h"
++typedef void *QueueHandle_t;
++QueueHandle_t xQueueCreate(unsigned count, unsigned size);
++int xQueueReset(QueueHandle_t queue);
++int xQueueSend(QueueHandle_t queue, const void *item, TickType_t ticks);
++int xQueueReceive(QueueHandle_t queue, void *item, TickType_t ticks);
+--- /dev/null
++++ b/scripts/tests/can/ride_mocks/freertos/semphr.h
+@@ -0,0 +1,6 @@
++#pragma once
++#include "FreeRTOS.h"
++typedef int *SemaphoreHandle_t;
++SemaphoreHandle_t xSemaphoreCreateMutex(void);
++int xSemaphoreTake(SemaphoreHandle_t sem, TickType_t ticks);
++int xSemaphoreGive(SemaphoreHandle_t sem);
+--- /dev/null
++++ b/scripts/tests/can/ride_mocks/vesc_can/comm_can.h
+@@ -0,0 +1,5 @@
++#pragma once
++#include <stdint.h>
++uint8_t comm_can_get_local_id(void);
++void comm_can_send_buffer_sync(uint8_t id, const uint8_t *data,
++                              unsigned len, uint8_t send, uint32_t timeout);
