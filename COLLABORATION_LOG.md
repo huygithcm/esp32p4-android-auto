@@ -47,8 +47,11 @@ present from work performed in the current session.
   failed before process creation (helper_unknown_error: setup refresh had
   errors). User subsequently authorized outside-sandbox execution to finish
   publication. Fresh origin fetch confirms this branch is ahead by two commits;
-  the other four local branches match origin. Resuming normal push after this
-  handoff commit. No force push, branch switching or dirty-tree reset.
+  the other four local branches match origin. Normal push of all five local
+  branches succeeded through f959c75; live ls-remote comparison confirms all
+  five local tips match origin and working tree is clean. This final result
+  entry is committed and pushed separately. No build/flash, force push,
+  branch switching or dirty-tree reset.
 - Handoff: S3 clone is separate and has two committed changes plus dirty work;
   its publication scope was asked separately. The packaged CAN fixes remain
   unapplied, and release artifacts do not include the pending polling fix.
