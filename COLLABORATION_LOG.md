@@ -42,8 +42,13 @@ present from work performed in the current session.
   CAN payload SHA256, Python syntax, release SHA256 and ZIP CRC pass;
   whitespace check passes. No new compilation, firmware build or flash:
   the user's explicit build-confirmation gate remains in effect.
-- Status: preparing normal commit/push; success must be checked against live
-  remote refs after push. No force push, branch switching or dirty-tree reset.
+- Status: source checkpoint committed as 202a9b2. User then requested sandbox
+  execution to avoid visible command windows. Sandbox `git push --all origin`
+  failed before process creation (helper_unknown_error: setup refresh had
+  errors). User subsequently authorized outside-sandbox execution to finish
+  publication. Fresh origin fetch confirms this branch is ahead by two commits;
+  the other four local branches match origin. Resuming normal push after this
+  handoff commit. No force push, branch switching or dirty-tree reset.
 - Handoff: S3 clone is separate and has two committed changes plus dirty work;
   its publication scope was asked separately. The packaged CAN fixes remain
   unapplied, and release artifacts do not include the pending polling fix.
