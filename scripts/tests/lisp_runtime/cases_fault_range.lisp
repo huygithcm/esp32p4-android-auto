@@ -1,0 +1,6 @@
+(sleep 0.2)
+(test-check (= diag-first 0) "ADC transient case starts healthy")
+(setq host-range-ok nil)
+(sleep 0.05)
+(setq host-range-ok t)
+(def host-expected-cause 3)

@@ -1,0 +1,48 @@
+esptool.py v4.12.0
+File size: 4478656 (bytes)
+
+ESP32P4 image header
+====================
+Image version: 1
+Entry point: 0x4ff00410
+Segments: 7
+Flash size: 16MB
+Flash freq: 80m
+Flash mode: DIO
+
+ESP32P4 extended image header
+=============================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 18 (ESP32-P4)
+Minimal chip revision: v1.0, (legacy min_rev = 0)
+Maximal chip revision: v1.99
+
+Segments information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x27ca30  0x401b0020  0x00000018  DROM, IROM
+      1  0x00068  0x30100000  0x0027ca50  
+      2  0x03550  0x4ff00000  0x0027cac0  DRAM, BYTE_ACCESSIBLE, IRAM
+      3  0x1ab5c4  0x40000020  0x00280018  DROM, IROM
+      4  0x14e50  0x4ff03550  0x0042b5e4  DRAM, BYTE_ACCESSIBLE, IRAM
+      5  0x0522c  0x4ff18400  0x0044043c  DRAM, BYTE_ACCESSIBLE, IRAM
+      6  0x00020  0x50108080  0x00445670  RTC_IRAM, RTC_DRAM
+
+ESP32P4 image footer
+====================
+Checksum: 0x38 (valid)
+Validation hash: 036e437ae7c5c365c0faeb603b47e29388320f1ceec808f98b29dcbcf57c036d (valid)
+
+Application information
+=======================
+Project name: esp32p4_android_auto
+App version: 1.3.8-rc1
+Compile time: Sep 27 2026 22:57:57
+ELF file SHA256: 351a1c0fbe0813a92210d3e697719522eac40862fc3f4b8b2ee534ab386b6139
+ESP-IDF: v5.5.3
+Minimal eFuse block revision: 0.0
+Maximal eFuse block revision: 1.99
+MMU page size: 64 KB
+Secure version: 0

@@ -1,0 +1,18 @@
+Compiling managed LVGL and Super_VESC_Display/custom/lisp_panel.c at 7c77f2b
+python : FAIL opening_release_outside:143: polling_enabled
+At line:2 char:1
++ python scripts/test_lisp_panel_ui.py --cc C:/msys64/mingw32/bin/gcc.e ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (FAIL opening_re...polling_enabled:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+FAIL opening_release_inside:147: polling_enabled
+FAIL next_outside_tap:151: polling_enabled
+PASS mode_and_park_actions
+FAIL missing_descriptor:181: polling_enabled
+FAIL late_descriptor:181: polling_enabled
+PASS dashboard_only
+PASS screen_change
+FAIL reopen_during_close:208: overlay_count() == 0
+LVGL device drawer: 3/9 PASS
+Failed: opening_release_outside, opening_release_inside, next_outside_tap, missing_descriptor, late_descriptor, reopen_during_close

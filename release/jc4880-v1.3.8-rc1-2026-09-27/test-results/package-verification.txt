@@ -1,0 +1,6 @@
+PASS app identical to build output and merged region at 0x20000
+PASS bootloader, partition table and OTA init regions identical to build inputs
+PASS packaged Lisp identical to tested canonical source
+PASS embedded app version 1.3.8-rc1, image fits 5 MiB OTA slot
+PASS root baseline and old release Lisp hashes unchanged
+PASS source overlay ZIP integrity and all member bytes

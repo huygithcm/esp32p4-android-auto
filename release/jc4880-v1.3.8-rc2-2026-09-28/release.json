@@ -1,0 +1,603 @@
+{
+  "name": "jc4880-v1.3.8-rc2-2026-09-28",
+  "version": "1.3.8-rc2",
+  "channel": "hardware-test-rc",
+  "created_at": "2026-09-28T10:54:22.395647+00:00",
+  "board": "JC4880P443C",
+  "chip": "esp32p4",
+  "flash_size_bytes": 16777216,
+  "flash_mode": "dio",
+  "flash_frequency": "80m",
+  "chip_revision_range": "1.0-1.99",
+  "app_bytes": 4479264,
+  "ota_slot_bytes": 5242880,
+  "ota_free_bytes": 763616,
+  "merged_flash_offset": "0x0",
+  "merged_overwrites_nvs_padding": true,
+  "source": {
+    "git_base": "78356d73b92d3a8c566915339de7dfa2e9b6418a",
+    "branch": "fix/gear-circle-park-reverse",
+    "dirty": true,
+    "overlay": "source-overlay.zip",
+    "files": [
+      {
+        "path": "COLLABORATION_LOG.md",
+        "bytes": 143325,
+        "sha256": "56aeb0653ce676eaf3d3bddd2299b77a9dcc78751dbfa03398474ff974659875"
+      },
+      {
+        "path": "Super_VESC_Display/custom/lisp_panel.c",
+        "bytes": 20758,
+        "sha256": "1c406552a5f8ec078c3acb50e7314efbacb1a26aa36f2990603f045f6627ab65"
+      },
+      {
+        "path": "Super_VESC_Display/custom/realtime_viewer.c",
+        "bytes": 14617,
+        "sha256": "89bb8bb7a124f7dc7f37e3d38d9c0e570388fd188fc657f6dd076c2e2e9e456c"
+      },
+      {
+        "path": "build_jc4880/sdkconfig",
+        "bytes": 116917,
+        "sha256": "5fb42c3b4516a2a3b68bee1e006d0f10ed6ebe2bb00580db8f0ef7643cf48bb0"
+      },
+      {
+        "path": "components/vesc_can/comm_can.c",
+        "bytes": 30793,
+        "sha256": "e8bffa02dfb6f58428adbd54c4c9cc92898304b0a75e3437f30170617dc2b162"
+      },
+      {
+        "path": "components/vesc_can/include/vesc_can/comm_can.h",
+        "bytes": 5065,
+        "sha256": "f41f58a5de1dc2dde37f58c1cdf26dae014a8873dc64631ff4e1277271dfaba3"
+      },
+      {
+        "path": "components/vesc_can/include/vesc_can/vesc_rt_data.h",
+        "bytes": 3119,
+        "sha256": "8f811134583ae19b9098a8a79ec7afbc9cca8a2cb5f4240ba6502921016fbf1a"
+      },
+      {
+        "path": "components/vesc_can/vesc_rt_data.c",
+        "bytes": 15551,
+        "sha256": "c168533a02c78d5cb32cd085c1689b2b1f48edcb81bef922fa39044f620f4859"
+      },
+      {
+        "path": "docs/M_TEMP_DEEP_TRACE_2026-09-28.md",
+        "bytes": 26732,
+        "sha256": "f3688ca4bc46092711c95fbc93df46c8fde3ce2056fb248b0d851a36990c5b9f"
+      },
+      {
+        "path": "docs/M_TEMP_VIDEO_AND_REGRESSION_2026-09-27.md",
+        "bytes": 6227,
+        "sha256": "933b9563b1db0d43e2c5cf8382e0339b3df529730cadd65ca6e286a42e28d329"
+      },
+      {
+        "path": "docs/ROOT_LISP_VS_RELEASE_2026-09-27.md",
+        "bytes": 14484,
+        "sha256": "462ad9fa80421b6ee22f64af59ee444d7f6a98b2d66eb2e22c7d2ae879884311"
+      },
+      {
+        "path": "docs/VESC_REFERENCE_FIRST_AUDIT_2026-09-27.md",
+        "bytes": 24447,
+        "sha256": "d85c41a6a5f6c72a5fb8d72bb36e97e23a20224f9c2e83c80100dde8ac6ac013"
+      },
+      {
+        "path": "lisp/main.lisp",
+        "bytes": 48911,
+        "sha256": "bab5a803c38ca6b61b0b44d41d80a9b3df0c51ad870aa70c7f07e118d55acc6d"
+      },
+      {
+        "path": "main/main.c",
+        "bytes": 31089,
+        "sha256": "ce67fc5cf4917d054fc4b424b453c9275840a7dc0c0da7b293af355d16aec1fe"
+      },
+      {
+        "path": "main/vesc_ui_updater.c",
+        "bytes": 10445,
+        "sha256": "63c4f979088ba8afce42e4209181001f59d53cd9fb6fb154cf74961c9079ec1c"
+      },
+      {
+        "path": "scripts/test_lisp_panel_ui.py",
+        "bytes": 3926,
+        "sha256": "14485359c22717da7e45cb2c69ae6a13d8da8f2cbc4fd77fa6f2e62b2a4654fd"
+      },
+      {
+        "path": "scripts/test_lisp_runtime.py",
+        "bytes": 10274,
+        "sha256": "ad77a0c951ced020403a716bb04407e8d59b8e4a04a58c11f8c62b9026d43e0e"
+      },
+      {
+        "path": "scripts/test_lisp_safety.py",
+        "bytes": 15902,
+        "sha256": "beb58e98bac939f43c1a52f1bf0bb64b130fe94ece5bd4546a26c631f999ea72"
+      },
+      {
+        "path": "scripts/test_mtemp_conversion.py",
+        "bytes": 6453,
+        "sha256": "bf25076752ffb33cc59ce36550a98073927acc32dd115544112e0f2eb227b1d9"
+      },
+      {
+        "path": "scripts/test_mtemp_transport.py",
+        "bytes": 4399,
+        "sha256": "663f28cdacda7b9f3eddb0b3a99893d2f563da0dab8bd78f98a4bc182077a1b1"
+      },
+      {
+        "path": "scripts/test_mtemp_ui.py",
+        "bytes": 5594,
+        "sha256": "b69211c46acef9b6719166df3b578a0eaf89e4e98ca189af7a5dea7e7fa193e6"
+      },
+      {
+        "path": "scripts/test_target_polling.py",
+        "bytes": 5479,
+        "sha256": "32b6aba67cbdc269f9252aece8857bef77d5ecc064a4a0ed5b99b3ae76bbb759"
+      },
+      {
+        "path": "scripts/test_vesc_telemetry.py",
+        "bytes": 4577,
+        "sha256": "4813daa6ddd357ad4e8e3a6dbe29e0872f910aaf8e27a999758c56e2167a61ea"
+      },
+      {
+        "path": "scripts/tests/lisp_panel_ui/README.md",
+        "bytes": 3559,
+        "sha256": "66b05eca0d0d1994d361f5c03e7735bcf507fd806febe76e75586a0b85bd6400"
+      },
+      {
+        "path": "scripts/tests/lisp_panel_ui/lv_conf.h",
+        "bytes": 802,
+        "sha256": "a0f467078ddf8425eb7c057d5b36cedbd8e6bcb427c805638b54d98a7af4c9c1"
+      },
+      {
+        "path": "scripts/tests/lisp_panel_ui/test_lisp_panel_ui.c",
+        "bytes": 8189,
+        "sha256": "685cb75eee822e68a67d9460faacd61f955d40d83b74e724cfb7ffdb5a27ffab"
+      },
+      {
+        "path": "scripts/tests/lisp_runtime/README.md",
+        "bytes": 2994,
+        "sha256": "75807db4ae6e8d46c029c8898c20928923383817557ed60ffe7eb1addc555fa7"
+      },
+      {
+        "path": "scripts/tests/lisp_runtime/cases.lisp",
+        "bytes": 2845,
+        "sha256": "1944b2931a2a6c3fc8790679ae4767c60a8b9f2a6d1ac127e888e27011b5d404"
+      },
+      {
+        "path": "scripts/tests/lisp_runtime/cases_native_adc.lisp",
+        "bytes": 1506,
+        "sha256": "50914b7e1340d6e894e01bc8fb465f9301f353e1f563821ac111622bdd22bdb9"
+      },
+      {
+        "path": "scripts/tests/lisp_runtime/esc_api_fixture.lisp",
+        "bytes": 1734,
+        "sha256": "07d22ef3ff988cc5a8d0301f6409c912c34838693cbf8457b9589a311d892a9b"
+      },
+      {
+        "path": "scripts/tests/lisp_runtime/platform605/platform_mutex.c",
+        "bytes": 219,
+        "sha256": "5d8d35b9f022970288a0b9c34808c06dde86b5e002729a5b56cd53fd5630f732"
+      },
+      {
+        "path": "scripts/tests/lisp_runtime/platform605/platform_mutex.h",
+        "bytes": 366,
+        "sha256": "f726db16a41948d6e0b6f45645c7c51621080c761e9d8e88f94109210766f321"
+      },
+      {
+        "path": "scripts/tests/lisp_runtime/runner.c",
+        "bytes": 6475,
+        "sha256": "4a151057f90b2d0c8e7fb09b52fcfb3857d6aecd421fe438627fafb7a55b78ad"
+      },
+      {
+        "path": "scripts/tests/mtemp_conversion/README.md",
+        "bytes": 2712,
+        "sha256": "49924ccac168fd12292e2bf6db6e8de543605c4592655ff4494af6d5df89ffdf"
+      },
+      {
+        "path": "scripts/tests/mtemp_conversion/test_mtemp_conversion.c",
+        "bytes": 7528,
+        "sha256": "825ceb3b0f10533617dc3aabc536b21c1364dd2e7bdee68d513c195ef3a9d36c"
+      },
+      {
+        "path": "scripts/tests/mtemp_transport/README.md",
+        "bytes": 9135,
+        "sha256": "78f227e329b8b019d42863502354a945620630eea57673eb3bb13dc79679af22"
+      },
+      {
+        "path": "scripts/tests/mtemp_transport/stubs/driver/twai.h",
+        "bytes": 23,
+        "sha256": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+      },
+      {
+        "path": "scripts/tests/mtemp_transport/stubs/esp_err.h",
+        "bytes": 23,
+        "sha256": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+      },
+      {
+        "path": "scripts/tests/mtemp_transport/stubs/esp_log.h",
+        "bytes": 23,
+        "sha256": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+      },
+      {
+        "path": "scripts/tests/mtemp_transport/stubs/esp_timer.h",
+        "bytes": 23,
+        "sha256": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+      },
+      {
+        "path": "scripts/tests/mtemp_transport/stubs/freertos/FreeRTOS.h",
+        "bytes": 23,
+        "sha256": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+      },
+      {
+        "path": "scripts/tests/mtemp_transport/stubs/freertos/semphr.h",
+        "bytes": 23,
+        "sha256": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+      },
+      {
+        "path": "scripts/tests/mtemp_transport/stubs/freertos/task.h",
+        "bytes": 23,
+        "sha256": "c8af94571c52b126d43da45310e391424654efde8d6791a27400818abd502e3d"
+      },
+      {
+        "path": "scripts/tests/mtemp_transport/stubs/mock_idf.h",
+        "bytes": 3838,
+        "sha256": "2a7dad6d5effa690f5a95d4b2e998a0cd6651b0224def301150cf55f764662b1"
+      },
+      {
+        "path": "scripts/tests/mtemp_transport/stubs/sdkconfig.h",
+        "bytes": 105,
+        "sha256": "21aabcb4b88d2ebafdec78e239f200e25bc820e9297d846656929b73fe12e176"
+      },
+      {
+        "path": "scripts/tests/mtemp_transport/test_mtemp_transport.c",
+        "bytes": 15740,
+        "sha256": "3653a3dae85caaff34e1abdde7b25f18071d7f6e15c45dac5ab3f0111a1681e1"
+      },
+      {
+        "path": "scripts/tests/mtemp_ui/README.md",
+        "bytes": 2260,
+        "sha256": "6e3d8ec8bec8376521553ca774e04d45e72617c4a479277aba6ae25cbbc5c252"
+      },
+      {
+        "path": "scripts/tests/mtemp_ui/stubs/dev_settings.h",
+        "bytes": 142,
+        "sha256": "606f6ae645b8dbdab157c26e5248faec6ca3a18afe20f0cf16b0997c651fcbfc"
+      },
+      {
+        "path": "scripts/tests/mtemp_ui/stubs/freertos/task.h",
+        "bytes": 136,
+        "sha256": "353f17be663aeef26aac9c1f99ee3685dfea34448e699c166808079dc81bdab0"
+      },
+      {
+        "path": "scripts/tests/mtemp_ui/test_mtemp_ui.c",
+        "bytes": 12056,
+        "sha256": "2531e32679a798a26f81e290d7a9ccc38245ad562ab726be3a657fc1ce078fc0"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/README.md",
+        "bytes": 4446,
+        "sha256": "d7a8ec92af5891b80044f67bfd844a3194f9adb70978b8296be89913ca721337"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/stubs/esp_err.h",
+        "bytes": 73,
+        "sha256": "f516fe7ea67ce96bc4b6783e62d9ca8e1fab45bd20a17bd5f9ed1b9494324c9b"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/stubs/esp_log.h",
+        "bytes": 297,
+        "sha256": "4fde032cdba679d64d7e0dda84c78fcba704b77aabc6990e80e437eb1bbb6de5"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/stubs/esp_timer.h",
+        "bytes": 67,
+        "sha256": "82a7c14acf5d1cdcbea1b23bab880c69562da88013adc34ff5f2ae2115fb08d1"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/stubs/freertos/FreeRTOS.h",
+        "bytes": 134,
+        "sha256": "a35ec30456e301f499b02ef7cc693ed22715b12274af53e80baf8e019249db78"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/stubs/freertos/task.h",
+        "bytes": 318,
+        "sha256": "72761e2a8432bff4fcf53e2553938d4eb9af2b19f6234bd22fe09cbae5f29761"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/stubs/sdkconfig.h",
+        "bytes": 102,
+        "sha256": "a78d26a491a0fc05cfe72bee020d72af17db716ac9e7bd9da115717d033c8902"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/test_vesc_telemetry.c",
+        "bytes": 16758,
+        "sha256": "9d005491821e94de025ef9ab8ceae51684cabb5cf15459d8640e04689005ba75"
+      },
+      {
+        "path": "version.txt",
+        "bytes": 10,
+        "sha256": "26fdbfc72f68255a1400fb558fb6386f68fb63bacc0f3f2495399ec2bd40e439"
+      }
+    ]
+  },
+  "build": {
+    "idf": "v5.5.3",
+    "lvgl": "8.3.11",
+    "debug_uart_bridge": false,
+    "bench_wifi_override": false,
+    "exit_code": 0,
+    "logs": [
+      "test-results/build.txt",
+      "test-results/build-final.txt",
+      "test-results/image-info.txt",
+      "test-results/merge.txt"
+    ],
+    "inputs": [
+      {
+        "path": "dependencies.lock",
+        "bytes": 13712,
+        "sha256": "d71a95c648f68ea9b51db6ef1dff78f01f855e2044924be62ae4c9afc58f383c"
+      },
+      {
+        "path": "sdkconfig.defaults",
+        "bytes": 13422,
+        "sha256": "59f6a460f1ed88eec5163b80344334217377b0aa4ee7b684f3b18c57cbfc340b"
+      },
+      {
+        "path": "sdkconfig.defaults.jc4880",
+        "bytes": 954,
+        "sha256": "c4ca1f938be2bfe86382e5f1c44437bc6aa3170768f53300685f85d7ca97f6dd"
+      },
+      {
+        "path": "build_jc4880/sdkconfig",
+        "bytes": 116917,
+        "sha256": "5fb42c3b4516a2a3b68bee1e006d0f10ed6ebe2bb00580db8f0ef7643cf48bb0"
+      },
+      {
+        "path": "partitions_16mb.csv",
+        "bytes": 1442,
+        "sha256": "863a3f09a1114f3dc771da013b953ade5539a156b65ee560827ca75acd33ef19"
+      },
+      {
+        "path": "main/lv_conf.h",
+        "bytes": 29974,
+        "sha256": "a4467f1efefc90f33e53b81a348bd36f22c5aa912f8b4165796b24f27ec140a6"
+      }
+    ],
+    "flash_inputs": [
+      {
+        "path": "build_jc4880/bootloader/bootloader.bin",
+        "bytes": 24048,
+        "sha256": "77462fc6423979c89a8e260be2b2d40fe39f52c4df32e94d5ea624abe74df359",
+        "offset": "0x2000"
+      },
+      {
+        "path": "build_jc4880/esp32p4_android_auto.bin",
+        "bytes": 4479264,
+        "sha256": "8e53b6110821e0f5832d1a8819915cdfd385e993640d0a078c4994b72f19612f",
+        "offset": "0x20000"
+      },
+      {
+        "path": "build_jc4880/partition_table/partition-table.bin",
+        "bytes": 3072,
+        "sha256": "14c53721598c0d476515630fc2c65385df3954828d1b91267458cf47ec2b9ba2",
+        "offset": "0x8000"
+      },
+      {
+        "path": "build_jc4880/ota_data_initial.bin",
+        "bytes": 8192,
+        "sha256": "7d2c7ac4888bfd75cd5f56e8d61f69595121183afc81556c876732fd3782c62f",
+        "offset": "0xf000"
+      }
+    ],
+    "warnings": "Existing warnings retained; final rebuild after review corrections"
+  },
+  "tests": {
+    "can_transport": {
+      "pass": 22,
+      "total": 22,
+      "baseline_pass": 10,
+      "baseline_ref": "78356d73b92d3a8c566915339de7dfa2e9b6418a"
+    },
+    "thermal_ui": {
+      "pass": 9,
+      "total": 9,
+      "baseline_pass": 5,
+      "baseline_ref": "7c77f2b"
+    },
+    "telemetry": {
+      "pass": 16,
+      "total": 16,
+      "baseline_pass": 9,
+      "baseline_ref": "7c77f2b"
+    },
+    "drawer_ui": {
+      "pass": 9,
+      "total": 9
+    },
+    "lisp_branch": {
+      "pass": 17,
+      "total": 17
+    },
+    "lispbm_6_05": {
+      "pass": 27,
+      "total": 27,
+      "heap_cells": 2464,
+      "memory_bytes": 18432,
+      "gc_stack": 160
+    },
+    "lispbm_7_00": {
+      "pass": 27,
+      "total": 27,
+      "heap_cells": 4096
+    },
+    "conversion_6_05": {
+      "checks": 603,
+      "failures": 0
+    },
+    "ride_safety": {
+      "checks": 2532,
+      "failures": 0
+    },
+    "ride_transport": {
+      "checks": 53,
+      "failures": 0
+    },
+    "ride_gear": {
+      "checks": 81,
+      "failures": 0
+    },
+    "target_polling": "PASS",
+    "image_checksum_valid": true,
+    "image_validation_hash_valid": true,
+    "independent_review": "No remaining blocker after dual-motor identity and trip-log corrections",
+    "hardware_tested": false
+  },
+  "official_refs": {
+    "vesc_6_05": "a0d40e2c5a42c810888d8c379307e6b0a118a125",
+    "vesc_7_00": "20cbb362687291242ab90b99f25fbfe8835540fc"
+  },
+  "lisp_unchanged_from_rc1": true,
+  "limits": [
+    "ESC driver APIs mocked in host LispBM",
+    "Host tests do not validate ADC electrical behavior, FreeRTOS timing, touch hardware or CAN concurrency",
+    "Inherited shared RT snapshot/retarget concurrency not proven atomic",
+    "CAN FILL frames have no source/transaction ID; overlapping producers can still cause drops",
+    "Trip history retains previous latest-snapshot semantics; no per-temperature freshness metadata added",
+    "Dashboard preserves last stale thermal value; realtime viewer marks it unavailable"
+  ],
+  "unresolved": [
+    "Actual ESC M-TEMP/throttle correlation after Lisp upload",
+    "ESC board identity and saved Sensor Type/ADC Control Type",
+    "Hardware acceptance and direct versus bridged VESC Tool comparison"
+  ],
+  "artifacts": [
+    {
+      "path": "esp32p4-jc4880-v1.3.8-rc2-ota.bin",
+      "bytes": 4479264,
+      "sha256": "8e53b6110821e0f5832d1a8819915cdfd385e993640d0a078c4994b72f19612f"
+    },
+    {
+      "path": "main.lisp",
+      "bytes": 48911,
+      "sha256": "bab5a803c38ca6b61b0b44d41d80a9b3df0c51ad870aa70c7f07e118d55acc6d"
+    },
+    {
+      "path": "merged.bin",
+      "bytes": 4610336,
+      "sha256": "aeeab6f8e99e2da96a356db4642afa532b843d680a9a732f2398890655c28b97"
+    },
+    {
+      "path": "README.md",
+      "bytes": 5557,
+      "sha256": "f9568d8911d7b8d48c63d8636cbc49d7eec6e1c092c54e7c2e3c12ca38e9d22d"
+    },
+    {
+      "path": "source-overlay.zip",
+      "bytes": 228996,
+      "sha256": "8dc153906dba8f94ef04ebb8a789a85cb9af4d44d6f6a1e366915cfeaaf985f6"
+    },
+    {
+      "path": "test-results/build-final.txt",
+      "bytes": 3304,
+      "sha256": "f01dd12ce8a1e507bf430f3bd92727d03b136774ef0e8942e852450e609ead47"
+    },
+    {
+      "path": "test-results/build.txt",
+      "bytes": 34508,
+      "sha256": "3b7ed6fe956986d01d2ed8bf6ad60dd335775672ff714ea0bc36f951140a83e5"
+    },
+    {
+      "path": "test-results/conversion-6.05.txt",
+      "bytes": 1866,
+      "sha256": "ed84a2b2d44298f1da07c0fae996df906743abb01e148efc560e825c1fdf241d"
+    },
+    {
+      "path": "test-results/drawer-ui.txt",
+      "bytes": 336,
+      "sha256": "2c7b289bf98415cb484306a3adda49d363c5c045486952c24f1b576347573d9f"
+    },
+    {
+      "path": "test-results/image-info.txt",
+      "bytes": 1609,
+      "sha256": "8bbaf9bbea7b53c580d2ecd16616c10ac50c86307901c222b7d33d6539c365bc"
+    },
+    {
+      "path": "test-results/lisp-branch.txt",
+      "bytes": 1284,
+      "sha256": "0919e0e1c2350791cf8e4efa8dce968a2693a01eef798715654fc9334ab19c05"
+    },
+    {
+      "path": "test-results/lisp-runtime-6.05-heap2464.txt",
+      "bytes": 2770,
+      "sha256": "01d007c7281c83003669e885785daba0dddc72cff796f4590edbaef646d158aa"
+    },
+    {
+      "path": "test-results/lisp-runtime-6.05.txt",
+      "bytes": 2497,
+      "sha256": "1b2c0b7af4766f3651557b8d0c0b25b3a20d6c3044b6da27ef6dc1b1e256bfab"
+    },
+    {
+      "path": "test-results/lisp-runtime-7.00.txt",
+      "bytes": 2551,
+      "sha256": "5dca9a3229cef7ab360733f9ae671c396c336900a594ff9ed5e8f0195c305e80"
+    },
+    {
+      "path": "test-results/merge.txt",
+      "bytes": 157,
+      "sha256": "aea6ad1ff80a39a0c2cd0200d0ab3716daf5462d8ea902d3ba98df23b2e5582a"
+    },
+    {
+      "path": "test-results/mtemp-ui-baseline.txt",
+      "bytes": 2015,
+      "sha256": "9202c28dceeae8158d7235cd96077a759a64d56d869fbe71b79817700360f263"
+    },
+    {
+      "path": "test-results/mtemp-ui-current.txt",
+      "bytes": 1184,
+      "sha256": "9d09ed274cef66702dbc082f5fba62297ca4c78f15aaabada330d7e08fc935c9"
+    },
+    {
+      "path": "test-results/ride-gear.txt",
+      "bytes": 27,
+      "sha256": "7c1d6309d969c3a03dc5cf1e979bafbc7f5fa651f63f341c8d51a55d406b4ff1"
+    },
+    {
+      "path": "test-results/ride-safety.txt",
+      "bytes": 38,
+      "sha256": "e594d7a6159d465fc7c69c4c810d5af25c8fa682683c72187520912f514388f2"
+    },
+    {
+      "path": "test-results/ride-transport.txt",
+      "bytes": 61,
+      "sha256": "afa8282d0103aeb88c4d670ae0aa9d1cdb4dbb9280a8222e9bffcdd2236f5e19"
+    },
+    {
+      "path": "test-results/target-polling.txt",
+      "bytes": 136,
+      "sha256": "fb42dbb2eb1d33ab08afc3b0fee69b2581349db0b3ffa423992b8bce2d982dc4"
+    },
+    {
+      "path": "test-results/telemetry-baseline.txt",
+      "bytes": 14023,
+      "sha256": "09b54b349de38a30c663cf9b3b18cadd62d0ac2e6488d4931ec641310084cbf1"
+    },
+    {
+      "path": "test-results/telemetry-current.txt",
+      "bytes": 733,
+      "sha256": "ce14f8115b3a6e30fcd2f49829b9a5b85e23779f6b1c6947bbec8374429962b4"
+    },
+    {
+      "path": "test-results/transport-baseline.txt",
+      "bytes": 3149,
+      "sha256": "6955613a74f33095c011ebd92585c07aa221efc55cc18124aecb8c08623c63a3"
+    },
+    {
+      "path": "test-results/transport-current.txt",
+      "bytes": 1061,
+      "sha256": "28fd86bf6e679a140c79eabc04ce7a4dee094f375da64a3231e7e86f9cc96f4a"
+    },
+    {
+      "path": "TEST_CASES.md",
+      "bytes": 7072,
+      "sha256": "217e08effa54bc617b6c270b0b3dd93fafcbbf648fa7872a4bcc6ae5a5f21563"
+    }
+  ]
+}

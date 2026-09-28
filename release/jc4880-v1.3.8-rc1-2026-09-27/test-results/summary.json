@@ -1,0 +1,49 @@
+{
+  "baseline_ref": "7c77f2b",
+  "baseline_expected_exit": 1,
+  "current_expected_exit": 0,
+  "ui": {
+    "baseline_pass": 3,
+    "pass": 9,
+    "total": 9
+  },
+  "lisp_branch": {
+    "baseline_pass": 14,
+    "pass": 17,
+    "total": 17
+  },
+  "lispbm_runtime": {
+    "baseline_pass": 16,
+    "pass": 18,
+    "total": 18
+  },
+  "telemetry": {
+    "baseline_pass": 10,
+    "pass": 14,
+    "total": 14
+  },
+  "ride_safety": {
+    "checks": 2532,
+    "failures": 0
+  },
+  "ride_transport": {
+    "checks": 53,
+    "failures": 0
+  },
+  "ride_gear": {
+    "checks": 81,
+    "failures": 0
+  },
+  "target_polling": "PASS",
+  "build_exit": 0,
+  "image_checksum_valid": true,
+  "image_validation_hash_valid": true,
+  "hardware_tested": false,
+  "m_temp_root_cause": "unresolved",
+  "limits": [
+    "ESC APIs are host fixtures",
+    "UI CAN/dashboard boundary mocked",
+    "No GT911 or FreeRTOS/CAN hardware validation",
+    "No flash or ESC configuration writes"
+  ]
+}

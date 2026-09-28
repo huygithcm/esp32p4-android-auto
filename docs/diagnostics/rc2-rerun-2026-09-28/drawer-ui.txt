@@ -1,0 +1,17 @@
+COMMAND: C:\Users\huybu\AppData\Local\Programs\Python\Python312\python.exe -B scripts/test_lisp_panel_ui.py --cc C:/msys64/mingw32/bin/gcc.exe
+Compiling managed LVGL and Super_VESC_Display/custom/lisp_panel.c (working tree)
+PASS opening_release_outside
+PASS opening_release_inside
+PASS next_outside_tap
+PASS mode_and_park_actions
+PASS missing_descriptor
+PASS late_descriptor
+PASS dashboard_only
+PASS screen_change
+PASS reopen_during_close
+LVGL device drawer: 9/9 PASS
+
+STDERR:
+
+EXIT: 0
+DURATION_SECONDS: 33.156

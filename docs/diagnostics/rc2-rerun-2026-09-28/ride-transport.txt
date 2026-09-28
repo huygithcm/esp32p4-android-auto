@@ -1,0 +1,5 @@
+COMMAND: C:\msys64\mingw32\bin\gcc.exe -std=c11 -Wall -Wextra -I scripts/tests/ride_mocks -I components/vesc_can/include scripts/tests/test_ride_transport.c components/vesc_can/vesc_ride_mode_parse.c components/vesc_can/buffer.c -lm -o C:\Users\huybu\AppData\Local\Temp\vscode-agent-codex-sandbox-TuN8eo\rc2-rerun-ride-v07wy93i\transport.exe
+Ride transport: 53 checks, 0 failures; sends while locked=0
+
+EXIT: 0
+DURATION_SECONDS: 0.563

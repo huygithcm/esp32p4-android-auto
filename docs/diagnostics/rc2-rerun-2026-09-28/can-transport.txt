@@ -1,0 +1,34 @@
+COMMAND: C:\Users\huybu\AppData\Local\Programs\Python\Python312\python.exe -B scripts/test_mtemp_transport.py --cc C:/msys64/mingw32/bin/gcc.exe
+Compiling CAN/RT/IO/buffer/CRC at working tree
+PASS valid_fragmented_video_values
+PASS adc_custom_interleaving
+PASS overlapping_replies_crc_drop
+PASS missing_changed_tail_crc_drop
+OBSERVE missing temperature tail: deliveries 1 -> 1; sample time 1000 -> 1000
+PASS missing_unchanged_tail_refresh
+OBSERVE missing temperature tail: -17 -> -17.0 C (retained bytes from older reply)
+PASS missing_tail_numeric_replay
+OBSERVE target=10, reply sender=11, motorID=11: 12.5 -> 12.5 C
+PASS wrong_sender_temperature
+PASS status4_is_separate
+OBSERVE STATUS4 DLC=2: stored=no motor=0.0; RT=12.5 C
+PASS short_status4_dlc
+PASS no_prefix_or_duplicate_finish
+PASS out_of_order_fragments
+PASS long_fragment_roundtrip
+PASS malformed_control_dlc
+PASS status_dlc_validation
+PASS overflow_and_recovery
+PASS sender_scope_short_bridge
+PASS duplicate_fragment_recovery
+PASS dual_motor_base_sender
+PASS matching_sender_wrong_motor
+PASS inconsistent_sender_identity
+PASS missing_motor_identity
+PASS dual_motor_sender_wrap
+M-TEMP transport: 22/22 PASS
+
+STDERR:
+
+EXIT: 0
+DURATION_SECONDS: 1.594

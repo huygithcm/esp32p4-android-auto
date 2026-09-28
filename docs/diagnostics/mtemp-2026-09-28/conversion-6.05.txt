@@ -1,0 +1,30 @@
+Pinned VESC 6.05 source (a0d40e2c5a42c810888d8c379307e6b0a118a125) + example VESC6 10k pull-up + production P4 decoder/cockpit
+Fixture beta=3380, LPF=0.01; ADC/config inputs are hypothetical, not measured hardware.
+OPEN: filtered=-99.9996185, wire=-99.9, label=-99
+PASS independent EXT/ADC32 sweep preserves M-TEMP
+PASS exact -100 input renders -100; invalid-to-midpoint recovery gives 24.98706 C
+REPLAY: thermal_adc=2933 (2.3636V at3.3V), filtered=2.488045, wire=2.4, label=2
+REPLAY: thermal_adc=2969 (2.3926V at3.3V), filtered=1.509887, wire=1.5, label=1
+REPLAY: thermal_adc=2933 (2.3636V at3.3V), filtered=2.488021, wire=2.4, label=2
+REPLAY: thermal_adc=4095 (3.3000V at3.3V), filtered=-99.999619, wire=-99.9, label=-99
+REPLAY: thermal_adc=3555 (2.8648V at3.3V), filtered=-17.498470, wire=-17.4, label=-17
+PASS Disabled ignores ADC; explicit override controls its temperature
+SENSOR type=0 adc=0 -> wire=-99.9 label=-99
+SENSOR type=0 adc=4095 -> wire=-99.9 label=-99
+SENSOR type=1 adc=0 -> wire=-66.6 label=-66
+SENSOR type=1 adc=4095 -> wire=-99.9 label=-99
+SENSOR type=2 adc=0 -> wire=-160.1 label=-160
+SENSOR type=2 adc=4095 -> wire=-99.9 label=-99
+SENSOR type=3 adc=0 -> wire=-99.9 label=-99
+SENSOR type=3 adc=4095 -> wire=-99.9 label=-99
+SENSOR type=4 adc=0 -> wire=-161.3 label=-161
+SENSOR type=4 adc=4095 -> wire=-99.9 label=-99
+SENSOR type=5 adc=0 -> wire=-99.9 label=-99
+SENSOR type=5 adc=4095 -> wire=-99.9 label=-99
+SENSOR type=6 adc=0 -> wire=-141.6 label=-141
+SENSOR type=6 adc=4095 -> wire=-99.9 label=-99
+SENSOR type=7 adc=0 -> wire=-99.9 label=-99
+SENSOR type=7 adc=4095 -> wire=-99.9 label=-99
+PASS invalid values produce the official -100 fallback before filtering
+PASS production Celsius/Fahrenheit and secondary-head formatter
+Conversion pipeline: 603 checks, 0 failures; hypothetical ADC input, NO hardware proof

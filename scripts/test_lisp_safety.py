@@ -328,6 +328,45 @@ def run(forms):
         v.call('rm-send-status-seq', 12, 0xFFFF)
         eq(v.sent[-1], bytes.fromhex('56508dffff00000203e802bc02bcff01010000'))
     case('sequenced status exact 19-byte payload and clamped-current offsets', status_wire)
+
+    def fault_reporting(v):
+        # A blocked mode is reproducible with a latched input fault. Polls must
+        # report that cause even if the most recent command succeeded.
+        v.call('ride-input-fault')
+        v.call('ride-select-mode', 1)
+        eq(v.g['current-profile'], 0)
+        v.call('safety-query', 12, 0x1234)
+        eq(v.sent[-1][6:], bytes([5, 0, 12]))
+        v.call('rm-send-status-seq', 12, 0x1234)
+        eq(v.sent[-1][18], 12)
+        v.call('rm-send-status', 12)
+        eq(v.sent[-1][16], 12)
+    case('latched input fault blocks mode and remains visible in all polls', fault_reporting)
+
+    def boot_fault_reporting(v):
+        v.g.update({'safety-fault': 9, 'rm-fault': 0})
+        v.call('safety-query', 12, 1)
+        eq(v.sent[-1][6:], bytes([5, 0, 9]))
+    case('unsupported native input at boot reports cause 9 instead of OK', boot_fault_reporting)
+
+    def missing_motor_reporting(v):
+        v.g.update({'motor-live': 0, 'safety-fault': 0, 'rm-fault': 0})
+        v.call('safety-query', 12, 1)
+        eq(v.sent[-1][6:], bytes([5, 0, 12]))
+        v.g.update({'motor-live': 1, 'motor-seen': v.now - .2})
+        v.call('safety-query', 12, 2)
+        eq(v.sent[-1][6:], bytes([5, 0, 12]))
+    case('missing or stale motor worker reports input fault before supervisor', missing_motor_reporting)
+
+    def healthy_reporting(v):
+        v.g['rm-fault'] = 11
+        v.call('safety-query', 12, 1)
+        eq(v.sent[-1][6:], bytes([0, 0, 11]))
+        v.call('ride-select-mode', 2)
+        eq(v.g['current-profile'], 2)
+        eq(v.g['park-on'], 1)
+        eq(v.output, [])
+    case('healthy PARK permits panel modes and preserves command refusal', healthy_reporting)
     print(f'{sum(results)}/{len(results)} host branch cases passed; NOT hardware or LispBM validation')
     return all(results)
 
@@ -360,8 +399,12 @@ def check_startup_order(forms):
 
 
 if __name__ == '__main__':
+    import argparse
     import sys
-    source = Path(__file__).resolve().parents[1] / 'lisp' / 'main.lisp'
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--source', type=Path,
+                        default=Path(__file__).resolve().parents[1] / 'lisp' / 'main.lisp')
+    source = parser.parse_args().source
     try:
         forms = parse(source.read_text(encoding='utf-8-sig'))
         print(f'PASS full-source delimiter parse ({len(forms)} top-level forms)')

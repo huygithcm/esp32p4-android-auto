@@ -1,0 +1,24 @@
+COMMAND: C:\Users\huybu\AppData\Local\Programs\Python\Python312\python.exe -B scripts/test_vesc_telemetry.py --cc C:/msys64/mingw32/bin/gcc.exe
+Compiling production RT/IO decoders and buffer.c (working tree)
+PASS video_temperature_values
+PASS adc_does_not_change_temperature
+PASS selective_motor_only
+PASS full_setup_layout
+PASS truncated_adc
+PASS selective_mixed_fields
+PASS unknown_trailing_field
+PASS legacy_all_prefixes_rejected
+PASS truncated_selective_no_refresh
+PASS truncated_selective_atomic
+PASS all_selective_prefixes_and_recovery
+PASS truncated_current_no_field_shift
+PASS short_header
+PASS other_commands
+PASS request_includes_motor_identity
+PASS can_motor_identity
+VESC telemetry: 16/16 PASS
+
+STDERR:
+
+EXIT: 0
+DURATION_SECONDS: 1.516

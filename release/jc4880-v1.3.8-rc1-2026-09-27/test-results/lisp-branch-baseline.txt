@@ -1,0 +1,20 @@
+PASS full-source delimiter parse (147 top-level forms)
+PASS static startup direct-call definition order (not scheduler validation)
+PASS P exit/entry standstill throttle reverse brake guards
+PASS P blocks throttle/PAS but permits deliberate brake
+PASS stale mode monitor forces P and zero motor output
+PASS stale RX monitor revokes reverse and propulsion
+PASS native control enabled latches fault and refuses P exit
+PASS ADC range fault stops propulsion
+PASS PAS requires same-source fresh zero and expires
+PASS reverse standstill arm, moving reverse hold, release interlock
+PASS MODE boot held, short exit/select, long P no selection or torque
+PASS independent mode ceilings clamp to ESC, no motor command
+PASS legacy unlock denied; safety command owner/one-shot/expiry guards
+PASS safety reply exact 9-byte payload, sequence/state/result offsets
+PASS sequenced status exact 19-byte payload and clamped-current offsets
+FAIL latched input fault blocks mode and remains visible in all polls AssertionError b'\x05\x00\x00' != b'\x05\x00\x0c'
+FAIL unsupported native input at boot reports cause 9 instead of OK AssertionError b'\x05\x00\x00' != b'\x05\x00\t'
+FAIL missing or stale motor worker reports input fault before supervisor AssertionError b'\x05\x00\x00' != b'\x05\x00\x0c'
+PASS healthy PARK permits panel modes and preserves command refusal
+14/17 host branch cases passed; NOT hardware or LispBM validation

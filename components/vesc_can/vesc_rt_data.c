@@ -49,6 +49,9 @@ static const char *TAG = "vesc_rt";
 
 static vesc_setup_values_t s_rt_data;
 static bool                s_data_received      = false;
+static uint32_t            s_temp_received_mask = 0;
+static uint32_t            s_temp_mos_rx_time   = 0;
+static uint32_t            s_temp_motor_rx_time = 0;
 static bool                s_active             = false;
 static uint8_t             s_target_vesc_id     = 10;
 static uint32_t            s_request_interval_ms = 100;
@@ -64,6 +67,9 @@ void vesc_rt_data_init(uint8_t target_vesc_id, uint32_t poll_interval_ms)
 {
     memset(&s_rt_data, 0, sizeof(s_rt_data));
     s_data_received       = false;
+    s_temp_received_mask  = 0;
+    s_temp_mos_rx_time    = 0;
+    s_temp_motor_rx_time  = 0;
     s_active              = false;
     s_target_vesc_id      = target_vesc_id;
     s_request_interval_ms = poll_interval_ms ? poll_interval_ms : 100;
@@ -104,6 +110,7 @@ void vesc_rt_data_request(void)
         MASK_WATT_HOURS_CHARGED |
         MASK_TACHOMETER_ABS |
         MASK_FAULT_CODE |
+        MASK_VESC_ID |
         MASK_BATTERY_WH |
         MASK_ODOMETER |
         MASK_UPTIME_MS;
@@ -119,24 +126,46 @@ void vesc_rt_data_request(void)
     comm_can_send_buffer_sync(s_target_vesc_id, send_buffer, ind, 0, 60);
 }
 
+/* Wire widths for the known SETUP fields in official VESC 6.05 commands.c. */
+static const uint8_t s_setup_field_bytes[] = {
+    2, 2, 4, 4, 2, 4, 4, 2, 2, 4, 4,
+    4, 4, 4, 4, 4, 1, 1, 1, 4, 4, 4
+};
+
+static bool setup_response_layout(const uint8_t *data, unsigned int len,
+                                  uint32_t *mask, int32_t *field_start)
+{
+    if (!data || len < 1) return false;
+    const uint8_t cmd = data[0];
+    if (cmd != COMM_GET_VALUES_SETUP && cmd != COMM_GET_VALUES_SETUP_SELECTIVE) {
+        return false;
+    }
+    *field_start = 1;
+    *mask = 0xFFFFFFFFu;
+    if (cmd == COMM_GET_VALUES_SETUP_SELECTIVE) {
+        if (len < 5) return false;
+        *mask = buffer_get_uint32(data, field_start);
+    }
+    /* Command47 sends all22 fields: 70 bytes including command. No prefix
+     * may commit data. Selective future fields may follow the known prefix;
+     * empty/unknown-only masks update nothing. */
+    if (!(*mask & ((1u << 22) - 1u))) return false;
+    unsigned int required = (unsigned int)*field_start;
+    for (unsigned int bit = 0; bit < sizeof(s_setup_field_bytes); ++bit) {
+        if (*mask & (1u << bit)) required += s_setup_field_bytes[bit];
+    }
+    if (len < required) {
+        ESP_LOGW(TAG, "truncated setup response (%u < %u)", len, required);
+        return false;
+    }
+    return true;
+}
+
 void vesc_rt_data_process_response(const uint8_t *data, unsigned int len)
 {
-    if (len < 1) return;
-
-    uint8_t cmd = data[0];
-    if (cmd != COMM_GET_VALUES_SETUP && cmd != COMM_GET_VALUES_SETUP_SELECTIVE) {
-        return;
-    }
-
-    int32_t  ind  = 1;
-    uint32_t mask = 0xFFFFFFFFu;
-    if (cmd == COMM_GET_VALUES_SETUP_SELECTIVE) {
-        if (len < 5) {
-            ESP_LOGW(TAG, "selective response too short (%u)", len);
-            return;
-        }
-        mask = buffer_get_uint32(data, &ind);
-    }
+    int32_t ind;
+    uint32_t mask;
+    if (!setup_response_layout(data, len, &mask, &ind)) return;
 
     if ((mask & MASK_TEMP_MOS) && ind + 2 <= (int)len)
         s_rt_data.temp_mos = buffer_get_float16(data, 1e1f, &ind);
@@ -185,6 +214,11 @@ void vesc_rt_data_process_response(const uint8_t *data, unsigned int len)
 
     s_rt_data.rx_time = millis_now();
     s_data_received   = true;
+    /* An unrelated selective response is fresh traffic, not a fresh
+     * thermal sample. Keep the two sensors' ages independent. */
+    if (mask & MASK_TEMP_MOS) s_temp_mos_rx_time = s_rt_data.rx_time;
+    if (mask & MASK_TEMP_MOTOR) s_temp_motor_rx_time = s_rt_data.rx_time;
+    s_temp_received_mask |= mask & (MASK_TEMP_MOS | MASK_TEMP_MOTOR);
 
     static uint32_t log_counter = 0;
     if (++log_counter >= 20) {
@@ -200,12 +234,38 @@ void vesc_rt_data_process_response(const uint8_t *data, unsigned int len)
     }
 }
 
+void vesc_rt_data_process_can_response(const uint8_t *data, unsigned int len,
+                                       int sender_id)
+{
+    if (sender_id < 0 || sender_id >= 255) return;
+    /* utils_sys.c:utils_second_motor_id in official6.05 wraps254 to0. */
+    const uint8_t second_motor_id = (uint8_t)((sender_id + 1) % 255);
+    if (sender_id != (int)s_target_vesc_id && second_motor_id != s_target_vesc_id) return;
+    int32_t ind;
+    uint32_t mask;
+    if (!setup_response_layout(data, len, &mask, &ind) || !(mask & MASK_VESC_ID)) return;
+    /* Official 6.05 comm_can.c sends the base controller ID in the CAN
+     * envelope even for internal motor2. SETUP bit17 (commands.c) carries
+     * the selected logical motor ID. Require it for every CAN RT snapshot,
+     * including replies whose envelope matches the target: another client
+     * may have queried motor2 on that same controller. This is identity
+     * selection, not authentication of CAN traffic. */
+    for (unsigned int bit = 0; bit < 17; ++bit) {
+        if (mask & (1u << bit)) ind += s_setup_field_bytes[bit];
+    }
+    if (data[ind] != s_target_vesc_id) return;
+    vesc_rt_data_process_response(data, len);
+}
+
 void vesc_rt_data_inject(const vesc_setup_values_t *src)
 {
     if (!src) return;
     s_rt_data = *src;
     s_rt_data.rx_time = millis_now();
     s_data_received   = true;
+    s_temp_mos_rx_time = s_rt_data.rx_time;
+    s_temp_motor_rx_time = s_rt_data.rx_time;
+    s_temp_received_mask = MASK_TEMP_MOS | MASK_TEMP_MOTOR;
 }
 
 const vesc_setup_values_t *vesc_rt_data_get_latest(void) { return &s_rt_data; }
@@ -215,6 +275,18 @@ bool vesc_rt_data_is_fresh(void)
     if (!s_data_received) return false;
     uint32_t age = millis_now() - s_rt_data.rx_time;
     return age < 5000;
+}
+
+bool vesc_rt_data_temp_mos_is_fresh(void)
+{
+    return (s_temp_received_mask & MASK_TEMP_MOS) &&
+           (uint32_t)(millis_now() - s_temp_mos_rx_time) < 5000;
+}
+
+bool vesc_rt_data_temp_motor_is_fresh(void)
+{
+    return (s_temp_received_mask & MASK_TEMP_MOTOR) &&
+           (uint32_t)(millis_now() - s_temp_motor_rx_time) < 5000;
 }
 
 float vesc_rt_data_get_speed_kmh(void)

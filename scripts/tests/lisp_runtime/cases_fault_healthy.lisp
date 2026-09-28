@@ -1,0 +1,12 @@
+; Fresh diagnostic source: normal startup must not create evidence of a fault.
+(sleep 0.2)
+(test-check (and (= safety-fault 0) (= motor-live 1) (= tx-live 1))
+            "diagnostic healthy workers remain live")
+(test-check (and (= diag-first 0) (= diag-at 0)
+                 (= diag-tx-age 0) (= diag-rx-age 0) (= diag-motor-age 0))
+            "healthy startup leaves diagnostic fields empty")
+(test-check (= (ride-set-park 0) 0) "diagnostics preserve healthy PARK exit")
+(sleep 0.1)
+(test-check (and (= safety-fault 0) (= diag-first 0))
+            "healthy running state does not invent a fault")
+(test-finish)

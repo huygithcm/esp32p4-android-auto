@@ -1,0 +1,5 @@
+COMMAND: C:\msys64\mingw32\bin\gcc.exe -std=c11 -Wall -Wextra -I components/vesc_can/include scripts/tests/test_ride_safety.c components/vesc_can/vesc_ride_mode_parse.c components/vesc_can/buffer.c -lm -o C:\Users\huybu\AppData\Local\Temp\vscode-agent-codex-sandbox-TuN8eo\rc2-rerun-ride-v07wy93i\safety.exe
+Ride safety: 2532 checks, 0 failures
+
+EXIT: 0
+DURATION_SECONDS: 0.468

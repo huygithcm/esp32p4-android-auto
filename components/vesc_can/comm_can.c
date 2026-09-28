@@ -49,7 +49,7 @@ static SemaphoreHandle_t s_ping_sem;
 static SemaphoreHandle_t s_send_mutex;
 /* Completion signal for reply-expecting polls. The VESC streams its reply back
  * as a FILL_RX_BUFFER…PROCESS_RX_BUFFER sequence that we reassemble into a
- * per-sender slot keyed only by CAN id; two such replies in flight from the
+ * per-destination slot keyed only by CAN id; two such replies in flight to the
  * same node clobber each other's slot → CRC mismatch and a dropped packet. We
  * avoid that not with a lock but by keeping ALL continuous polls on a single
  * task (vesc_rt_data's rt_task): it sends one request, waits on this semaphore
@@ -68,6 +68,11 @@ static uint8_t s_fw_uuid[12];
 
 static uint8_t          s_rx_buffer[RX_BUFFER_NUM][RX_BUFFER_SIZE];
 static int              s_rx_buffer_device_id[RX_BUFFER_NUM];
+/* VESC 6.05/7.00 comm_can.c tracks the next contiguous fragment offset and
+ * requires it to match the PROCESS length. Keep our destination isolation too:
+ * FILL frames contain the destination, not the sender. */
+static unsigned int     s_rx_buffer_offset[RX_BUFFER_NUM];
+static int              s_packet_sender_id = -1;
 static volatile uint8_t s_rx_buffer_last_id;
 static volatile uint8_t s_rx_buffer_response_type = 1;
 
@@ -129,6 +134,7 @@ esp_err_t comm_can_start(int pin_tx, int pin_rx,
     }
     for (int i = 0; i < RX_BUFFER_NUM; i++) {
         s_rx_buffer_device_id[i] = -1;
+        s_rx_buffer_offset[i] = 0;
     }
 
     s_can_config.controller_id      = controller_id;
@@ -494,8 +500,49 @@ void comm_can_set_packet_handler(can_packet_handler_t handler)
     s_packet_handler = handler;
 }
 
+int comm_can_get_packet_sender_id(void)
+{
+    return s_packet_sender_id;
+}
+
+static void deliver_packet(const uint8_t *data, unsigned int len, uint8_t sender)
+{
+    if (!serve_request(data, len, sender) && s_packet_handler) {
+        s_packet_sender_id = sender;
+        s_packet_handler(data, len);
+        s_packet_sender_id = -1;
+    }
+}
+
+static void fill_rx_buffer(uint8_t destination, unsigned int offset,
+                           const uint8_t *data, unsigned int len)
+{
+    int slot = -1;
+    for (int i = 0; i < RX_BUFFER_NUM; i++) {
+        if (s_rx_buffer_device_id[i] == destination) { slot = i; break; }
+    }
+    if (slot < 0 && offset == 0) {
+        for (int i = 0; i < RX_BUFFER_NUM; i++) {
+            if (s_rx_buffer_device_id[i] == -1) { slot = i; break; }
+        }
+    }
+    if (slot < 0) return;
+    if (offset == 0) {
+        s_rx_buffer_device_id[slot] = destination;
+        s_rx_buffer_offset[slot] = 0;
+    }
+    if (offset != s_rx_buffer_offset[slot] || offset + len > RX_BUFFER_SIZE) {
+        s_rx_buffer_device_id[slot] = -1;
+        s_rx_buffer_offset[slot] = 0;
+        return;
+    }
+    memcpy(s_rx_buffer[slot] + offset, data, len);
+    s_rx_buffer_offset[slot] += len;
+}
+
 static void decode_msg(uint32_t eid, uint8_t *data8, int len)
 {
+    if (!data8 || len < 0 || len > 8) return;
     int32_t ind = 0;
     uint8_t crc_low, crc_high, commands_send;
 
@@ -506,53 +553,18 @@ static void decode_msg(uint32_t eid, uint8_t *data8, int len)
     if (id == 255 || id == s_can_config.controller_id) {
         switch (cmd) {
         case CAN_PACKET_FILL_RX_BUFFER: {
-            int buf_ind = -1;
-            int offset  = data8[0];
-            data8++; len--;
-
-            for (int i = 0; i < RX_BUFFER_NUM; i++) {
-                if (s_rx_buffer_device_id[i] == id) { buf_ind = i; break; }
-            }
-            if (buf_ind < 0 && offset == 0) {
-                for (int i = 0; i < RX_BUFFER_NUM; i++) {
-                    if (s_rx_buffer_device_id[i] == -1) {
-                        buf_ind = i;
-                        s_rx_buffer_device_id[i] = id;
-                        break;
-                    }
-                }
-            }
-            if (buf_ind < 0) break;
-            if (offset + len <= RX_BUFFER_SIZE) {
-                memcpy(s_rx_buffer[buf_ind] + offset, data8, len);
-            }
+            if (len < 2) break;
+            fill_rx_buffer(id, data8[0], data8 + 1, (unsigned int)len - 1);
         } break;
 
         case CAN_PACKET_FILL_RX_BUFFER_LONG: {
-            int buf_ind = -1;
-            int offset  = (int)data8[0] << 8;
-            offset |= data8[1];
-            data8 += 2; len -= 2;
-
-            for (int i = 0; i < RX_BUFFER_NUM; i++) {
-                if (s_rx_buffer_device_id[i] == id) { buf_ind = i; break; }
-            }
-            if (buf_ind < 0 && offset == 0) {
-                for (int i = 0; i < RX_BUFFER_NUM; i++) {
-                    if (s_rx_buffer_device_id[i] == -1) {
-                        buf_ind = i;
-                        s_rx_buffer_device_id[i] = id;
-                        break;
-                    }
-                }
-            }
-            if (buf_ind < 0) break;
-            if ((offset + len) <= RX_BUFFER_SIZE) {
-                memcpy(s_rx_buffer[buf_ind] + offset, data8, len);
-            }
+            if (len < 3) break;
+            unsigned int offset = ((unsigned int)data8[0] << 8) | data8[1];
+            fill_rx_buffer(id, offset, data8 + 2, (unsigned int)len - 2);
         } break;
 
         case CAN_PACKET_PROCESS_RX_BUFFER: {
+            if (len != 6) break;
             ind = 0;
             uint8_t last_id = data8[ind++];
             commands_send   = data8[ind++];
@@ -564,23 +576,24 @@ static void decode_msg(uint32_t eid, uint8_t *data8, int len)
 
             int rxbuf_len = (int)data8[ind++] << 8;
             rxbuf_len    |= (int)data8[ind++];
-            if (rxbuf_len > RX_BUFFER_SIZE) break;
 
             int buf_ind = -1;
             for (int i = 0; i < RX_BUFFER_NUM; i++) {
                 if (s_rx_buffer_device_id[i] == id) { buf_ind = i; break; }
             }
             if (buf_ind < 0) break;
+            unsigned int received = s_rx_buffer_offset[buf_ind];
+            s_rx_buffer_device_id[buf_ind] = -1;
+            s_rx_buffer_offset[buf_ind] = 0;
+            if (rxbuf_len < 1 || rxbuf_len > RX_BUFFER_SIZE ||
+                received != (unsigned int)rxbuf_len) break;
 
             crc_high = data8[ind++];
             crc_low  = data8[ind++];
 
             if (crc16(s_rx_buffer[buf_ind], rxbuf_len) ==
                 ((unsigned short)crc_high << 8 | (unsigned short)crc_low)) {
-                if (!serve_request(s_rx_buffer[buf_ind], rxbuf_len, last_id) &&
-                    s_packet_handler) {
-                    s_packet_handler(s_rx_buffer[buf_ind], rxbuf_len);
-                }
+                deliver_packet(s_rx_buffer[buf_ind], rxbuf_len, last_id);
             } else {
                 ESP_LOGW(TAG, "PROCESS_RX_BUFFER CRC mismatch (id=%u len=%d)", id, rxbuf_len);
             }
@@ -591,6 +604,7 @@ static void decode_msg(uint32_t eid, uint8_t *data8, int len)
         } break;
 
         case CAN_PACKET_PROCESS_SHORT_BUFFER: {
+            if (len < 3) break;
             ind = 0;
             uint8_t last_id = data8[ind++];
             commands_send   = data8[ind++];
@@ -599,14 +613,12 @@ static void decode_msg(uint32_t eid, uint8_t *data8, int len)
             }
             s_rx_buffer_response_type = (commands_send == 3) ? 0 : 1;
 
-            if (!serve_request(data8 + ind, len - ind, last_id) &&
-                s_packet_handler) {
-                s_packet_handler(data8 + ind, len - ind);
-            }
+            deliver_packet(data8 + ind, len - ind, last_id);
             if (s_rx_done_sem) xSemaphoreGive(s_rx_done_sem);
         } break;
 
         case CAN_PACKET_PING: {
+            if (len < 1) break;
             uint8_t buffer[2];
             buffer[0] = s_can_config.controller_id;
             buffer[1] = HW_TYPE_CUSTOM_MODULE;
@@ -615,6 +627,7 @@ static void decode_msg(uint32_t eid, uint8_t *data8, int len)
         } break;
 
         case CAN_PACKET_PONG:
+            if (len < 1) break;
             xSemaphoreGive(s_ping_sem);
             s_ping_hw_last = (len >= 2) ? (HW_TYPE)data8[1] : HW_TYPE_VESC_BMS;
             break;
@@ -627,6 +640,7 @@ static void decode_msg(uint32_t eid, uint8_t *data8, int len)
     /* Broadcast STATUS_* frames — record latest per controller ID. */
     switch (cmd) {
     case CAN_PACKET_STATUS:
+        if (len < 8) break;
         for (int i = 0; i < CAN_STATUS_MSGS_TO_STORE; i++) {
             can_status_msg *t = &stat_msgs[i];
             if (t->id == id || t->id == -1) {
@@ -641,6 +655,7 @@ static void decode_msg(uint32_t eid, uint8_t *data8, int len)
         }
         break;
     case CAN_PACKET_STATUS_2:
+        if (len < 8) break;
         for (int i = 0; i < CAN_STATUS_MSGS_TO_STORE; i++) {
             can_status_msg_2 *t = &stat_msgs_2[i];
             if (t->id == id || t->id == -1) {
@@ -654,6 +669,7 @@ static void decode_msg(uint32_t eid, uint8_t *data8, int len)
         }
         break;
     case CAN_PACKET_STATUS_3:
+        if (len < 8) break;
         for (int i = 0; i < CAN_STATUS_MSGS_TO_STORE; i++) {
             can_status_msg_3 *t = &stat_msgs_3[i];
             if (t->id == id || t->id == -1) {
@@ -667,6 +683,7 @@ static void decode_msg(uint32_t eid, uint8_t *data8, int len)
         }
         break;
     case CAN_PACKET_STATUS_4:
+        if (len < 8) break;
         for (int i = 0; i < CAN_STATUS_MSGS_TO_STORE; i++) {
             can_status_msg_4 *t = &stat_msgs_4[i];
             if (t->id == id || t->id == -1) {
@@ -682,6 +699,7 @@ static void decode_msg(uint32_t eid, uint8_t *data8, int len)
         }
         break;
     case CAN_PACKET_STATUS_5:
+        if (len < 6) break;
         for (int i = 0; i < CAN_STATUS_MSGS_TO_STORE; i++) {
             can_status_msg_5 *t = &stat_msgs_5[i];
             if (t->id == id || t->id == -1) {
@@ -695,6 +713,7 @@ static void decode_msg(uint32_t eid, uint8_t *data8, int len)
         }
         break;
     case CAN_PACKET_STATUS_6:
+        if (len < 8) break;
         for (int i = 0; i < CAN_STATUS_MSGS_TO_STORE; i++) {
             can_status_msg_6 *t = &stat_msgs_6[i];
             if (t->id == id || t->id == -1) {
@@ -805,7 +824,7 @@ static void process_task(void *arg)
             if (next_read >= RXBUF_LEN) next_read = 0;
             s_rx_read = next_read;
 
-            if (msg->extd) {
+            if (msg->extd && !msg->rtr) {
                 decode_msg(msg->identifier, msg->data, msg->data_length_code);
             }
         }

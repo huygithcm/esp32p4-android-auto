@@ -1,0 +1,391 @@
+{
+  "name": "jc4880-v1.3.8-rc1-2026-09-27",
+  "version": "1.3.8-rc1",
+  "channel": "hardware-test-rc",
+  "created_at": "2026-09-27T16:08:06.749585+00:00",
+  "board": "JC4880P443C",
+  "chip": "esp32p4",
+  "flash_size_bytes": 16777216,
+  "flash_mode": "dio",
+  "flash_frequency": "80m",
+  "chip_revision_range": "1.0-1.99",
+  "app_bytes": 4478656,
+  "ota_slot_bytes": 5242880,
+  "ota_free_bytes": 764224,
+  "merged_flash_offset": "0x0",
+  "merged_overwrites_nvs_padding": true,
+  "source": {
+    "git_base": "78356d73b92d3a8c566915339de7dfa2e9b6418a",
+    "dirty": true,
+    "branch": "fix/gear-circle-park-reverse",
+    "overlay": "source-overlay.zip",
+    "files": [
+      {
+        "path": "components/vesc_can/vesc_rt_data.c",
+        "bytes": 12738,
+        "sha256": "8791c4d85044c3d90e1af1f8f84dcdb9401a3322a0915da5b7ec8fb05e0d5709"
+      },
+      {
+        "path": "lisp/main.lisp",
+        "bytes": 48911,
+        "sha256": "bab5a803c38ca6b61b0b44d41d80a9b3df0c51ad870aa70c7f07e118d55acc6d"
+      },
+      {
+        "path": "scripts/test_lisp_panel_ui.py",
+        "bytes": 3926,
+        "sha256": "14485359c22717da7e45cb2c69ae6a13d8da8f2cbc4fd77fa6f2e62b2a4654fd"
+      },
+      {
+        "path": "scripts/test_lisp_runtime.py",
+        "bytes": 5012,
+        "sha256": "e26a4cc89af6e4e99db459de62c7eb3f5d2f82b05640ffc6d8a696b628cbb038"
+      },
+      {
+        "path": "scripts/test_lisp_safety.py",
+        "bytes": 15902,
+        "sha256": "beb58e98bac939f43c1a52f1bf0bb64b130fe94ece5bd4546a26c631f999ea72"
+      },
+      {
+        "path": "scripts/test_vesc_telemetry.py",
+        "bytes": 3667,
+        "sha256": "640eec395fcb8d68ed560ad7d751870fcb5b5cb224a855d155b8923123bd4422"
+      },
+      {
+        "path": "scripts/tests/lisp_panel_ui/lv_conf.h",
+        "bytes": 802,
+        "sha256": "a0f467078ddf8425eb7c057d5b36cedbd8e6bcb427c805638b54d98a7af4c9c1"
+      },
+      {
+        "path": "scripts/tests/lisp_panel_ui/README.md",
+        "bytes": 3559,
+        "sha256": "66b05eca0d0d1994d361f5c03e7735bcf507fd806febe76e75586a0b85bd6400"
+      },
+      {
+        "path": "scripts/tests/lisp_panel_ui/test_lisp_panel_ui.c",
+        "bytes": 8189,
+        "sha256": "685cb75eee822e68a67d9460faacd61f955d40d83b74e724cfb7ffdb5a27ffab"
+      },
+      {
+        "path": "scripts/tests/lisp_runtime/cases.lisp",
+        "bytes": 2845,
+        "sha256": "1944b2931a2a6c3fc8790679ae4767c60a8b9f2a6d1ac127e888e27011b5d404"
+      },
+      {
+        "path": "scripts/tests/lisp_runtime/esc_api_fixture.lisp",
+        "bytes": 1734,
+        "sha256": "07d22ef3ff988cc5a8d0301f6409c912c34838693cbf8457b9589a311d892a9b"
+      },
+      {
+        "path": "scripts/tests/lisp_runtime/runner.c",
+        "bytes": 5270,
+        "sha256": "86a976e87ead2b8fecb7b65f27a95998580f5726e5f58f9da56bdac3cd91d063"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/README.md",
+        "bytes": 3074,
+        "sha256": "d38c0ff7c0280ab8d123e90f5ecd8a844286c717e0e8ebf872151f6fe8e20216"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/stubs/esp_err.h",
+        "bytes": 73,
+        "sha256": "f516fe7ea67ce96bc4b6783e62d9ca8e1fab45bd20a17bd5f9ed1b9494324c9b"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/stubs/esp_log.h",
+        "bytes": 297,
+        "sha256": "4fde032cdba679d64d7e0dda84c78fcba704b77aabc6990e80e437eb1bbb6de5"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/stubs/esp_timer.h",
+        "bytes": 67,
+        "sha256": "82a7c14acf5d1cdcbea1b23bab880c69562da88013adc34ff5f2ae2115fb08d1"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/stubs/freertos/FreeRTOS.h",
+        "bytes": 134,
+        "sha256": "a35ec30456e301f499b02ef7cc693ed22715b12274af53e80baf8e019249db78"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/stubs/freertos/task.h",
+        "bytes": 318,
+        "sha256": "72761e2a8432bff4fcf53e2553938d4eb9af2b19f6234bd22fe09cbae5f29761"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/stubs/sdkconfig.h",
+        "bytes": 102,
+        "sha256": "a78d26a491a0fc05cfe72bee020d72af17db716ac9e7bd9da115717d033c8902"
+      },
+      {
+        "path": "scripts/tests/vesc_telemetry/test_vesc_telemetry.c",
+        "bytes": 13192,
+        "sha256": "99bc4fd0ad34b35d5376dafb8b2d6be321e43bde9ec8e4c5365f1e925e7d037c"
+      },
+      {
+        "path": "Super_VESC_Display/custom/lisp_panel.c",
+        "bytes": 20758,
+        "sha256": "1c406552a5f8ec078c3acb50e7314efbacb1a26aa36f2990603f045f6627ab65"
+      },
+      {
+        "path": "version.txt",
+        "bytes": 10,
+        "sha256": "bdcf0f0081331146a2937a2f6c642dfdfe811b197ec60d647ccafe8bd2535ab7"
+      }
+    ]
+  },
+  "build": {
+    "idf": "v5.5.3",
+    "lvgl": "8.3.11",
+    "debug_uart_bridge": false,
+    "bench_wifi_override": false,
+    "command": "idf.py -B build_jc4880 -D SDKCONFIG=build_jc4880/sdkconfig -D 'SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.jc4880' reconfigure build",
+    "inputs": [
+      {
+        "path": "build_jc4880/sdkconfig",
+        "bytes": 116917,
+        "sha256": "5fb42c3b4516a2a3b68bee1e006d0f10ed6ebe2bb00580db8f0ef7643cf48bb0"
+      },
+      {
+        "path": "dependencies.lock",
+        "bytes": 13712,
+        "sha256": "d71a95c648f68ea9b51db6ef1dff78f01f855e2044924be62ae4c9afc58f383c"
+      },
+      {
+        "path": "sdkconfig.defaults",
+        "bytes": 13422,
+        "sha256": "59f6a460f1ed88eec5163b80344334217377b0aa4ee7b684f3b18c57cbfc340b"
+      },
+      {
+        "path": "sdkconfig.defaults.jc4880",
+        "bytes": 954,
+        "sha256": "c4ca1f938be2bfe86382e5f1c44437bc6aa3170768f53300685f85d7ca97f6dd"
+      },
+      {
+        "path": "partitions_16mb.csv",
+        "bytes": 1442,
+        "sha256": "863a3f09a1114f3dc771da013b953ade5539a156b65ee560827ca75acd33ef19"
+      },
+      {
+        "path": "main/lv_conf.h",
+        "bytes": 29974,
+        "sha256": "a4467f1efefc90f33e53b81a348bd36f22c5aa912f8b4165796b24f27ec140a6"
+      }
+    ],
+    "flash_inputs": [
+      {
+        "path": "build_jc4880/bootloader/bootloader.bin",
+        "bytes": 24048,
+        "sha256": "77462fc6423979c89a8e260be2b2d40fe39f52c4df32e94d5ea624abe74df359",
+        "offset": "0x2000"
+      },
+      {
+        "path": "build_jc4880/partition_table/partition-table.bin",
+        "bytes": 3072,
+        "sha256": "14c53721598c0d476515630fc2c65385df3954828d1b91267458cf47ec2b9ba2",
+        "offset": "0x8000"
+      },
+      {
+        "path": "build_jc4880/ota_data_initial.bin",
+        "bytes": 8192,
+        "sha256": "7d2c7ac4888bfd75cd5f56e8d61f69595121183afc81556c876732fd3782c62f",
+        "offset": "0xf000"
+      }
+    ],
+    "exit_code": 0,
+    "warnings": "Existing code warnings; see build log"
+  },
+  "tests": {
+    "baseline_ref": "7c77f2b",
+    "baseline_expected_exit": 1,
+    "current_expected_exit": 0,
+    "ui": {
+      "baseline_pass": 3,
+      "pass": 9,
+      "total": 9
+    },
+    "lisp_branch": {
+      "baseline_pass": 14,
+      "pass": 17,
+      "total": 17
+    },
+    "lispbm_runtime": {
+      "baseline_pass": 16,
+      "pass": 18,
+      "total": 18
+    },
+    "telemetry": {
+      "baseline_pass": 10,
+      "pass": 14,
+      "total": 14
+    },
+    "ride_safety": {
+      "checks": 2532,
+      "failures": 0
+    },
+    "ride_transport": {
+      "checks": 53,
+      "failures": 0
+    },
+    "ride_gear": {
+      "checks": 81,
+      "failures": 0
+    },
+    "target_polling": "PASS",
+    "build_exit": 0,
+    "image_checksum_valid": true,
+    "image_validation_hash_valid": true,
+    "hardware_tested": false,
+    "m_temp_root_cause": "unresolved",
+    "limits": [
+      "ESC APIs are host fixtures",
+      "UI CAN/dashboard boundary mocked",
+      "No GT911 or FreeRTOS/CAN hardware validation",
+      "No flash or ESC configuration writes"
+    ]
+  },
+  "official_lispbm_ref": "20cbb362687291242ab90b99f25fbfe8835540fc",
+  "baseline_lisp_sha256": {
+    "main.lisp": "9bd3764197f38f7989451c56d2960ceb12ba31460610e515e6d415548a9cb3b1",
+    "release/jc4880-v1.3.7-2026-09-19-7c77f2b/main.lisp": "4aa8c31bb64888a5421c5d96369899ca2ae29172d5d500a5a217e9f4d05616e6"
+  },
+  "unresolved": [
+    "Hardware M-TEMP/throttle correlation",
+    "Actual ESC fault blocking mode"
+  ],
+  "artifacts": [
+    {
+      "path": "esp32p4-jc4880-v1.3.8-rc1-ota.bin",
+      "bytes": 4478656,
+      "sha256": "75344e7d63c165b849fb62f7b3f61308039d0cfe8e7c2511ac909f9ee56ca7f6"
+    },
+    {
+      "path": "evidence/late_temp.jpg",
+      "bytes": 422341,
+      "sha256": "4f4753727d04043119e2c61c0d676f7cc2b0b70bc8ea63c4b02939d2f38149f4"
+    },
+    {
+      "path": "evidence/throttle0.jpg",
+      "bytes": 344051,
+      "sha256": "b4cc783ddbfe00643bd9f63cbb82e3a84f7ee7769816312f880a29bef0939d31"
+    },
+    {
+      "path": "evidence/throttle1.jpg",
+      "bytes": 288540,
+      "sha256": "e2363a84601e04dee23af65f71fc4694c1d2c1b7889087f839b6fa5cdd196d63"
+    },
+    {
+      "path": "evidence/ui_early.jpg",
+      "bytes": 494534,
+      "sha256": "ba3fe9a0dd40ecc946a9fd1d1c8c19d0fa385e7c57e475c6274768f3a12fed25"
+    },
+    {
+      "path": "main.lisp",
+      "bytes": 48911,
+      "sha256": "bab5a803c38ca6b61b0b44d41d80a9b3df0c51ad870aa70c7f07e118d55acc6d"
+    },
+    {
+      "path": "merged.bin",
+      "bytes": 4609728,
+      "sha256": "7d4edd1137fdfff8b71be144305f298f02fa01cb0e31a83ae35c86e0f5f4f4ec"
+    },
+    {
+      "path": "README.md",
+      "bytes": 5490,
+      "sha256": "f5e4c347ed7cb7d91ea9cae9b43806dd8eba4a1e8667f4f171e0e9b43a43daff"
+    },
+    {
+      "path": "source-overlay.zip",
+      "bytes": 51671,
+      "sha256": "6311ef7c02f7af0c8e11ebdfd7f05f2e5f183bea458bd33dca49e5cc623d33cc"
+    },
+    {
+      "path": "test-results/build.txt",
+      "bytes": 246639,
+      "sha256": "3083baf5aa668423348b2d7ef97b9218811b1f73631162a188c3b5a9ad2c4400"
+    },
+    {
+      "path": "test-results/image-info.txt",
+      "bytes": 1609,
+      "sha256": "afb1d374add3354efa716f8c72e995b5619be679c327f32b9d3ade4b0d5b8aac"
+    },
+    {
+      "path": "test-results/lisp-branch-baseline.txt",
+      "bytes": 1432,
+      "sha256": "c723a2fcf7c7a0330055a301c70dad5014bb3cf7f9f7ddb3c48438f5afe2f6a4"
+    },
+    {
+      "path": "test-results/lisp-branch-current.txt",
+      "bytes": 1284,
+      "sha256": "0919e0e1c2350791cf8e4efa8dce968a2693a01eef798715654fc9334ab19c05"
+    },
+    {
+      "path": "test-results/lisp-runtime-baseline.txt",
+      "bytes": 1656,
+      "sha256": "b7fd8fbe2a4ee9ead6e811799a20261967b155a92f65d3c837fbff23c71ef9d3"
+    },
+    {
+      "path": "test-results/lisp-runtime-current.txt",
+      "bytes": 1644,
+      "sha256": "a143892d270be212be96bf50c5e1bef7f22014adc73992d765507e307160e414"
+    },
+    {
+      "path": "test-results/merge.txt",
+      "bytes": 157,
+      "sha256": "cb34af0e491b25bc14340445f30bc369308396910ba05b72c6825edb9893e3c7"
+    },
+    {
+      "path": "test-results/package-verification.txt",
+      "bytes": 381,
+      "sha256": "512f43b3bb5535ebb10c8a56140988b8b9ee55e2a05d415335524a1ee3caa970"
+    },
+    {
+      "path": "test-results/ride-gear.txt",
+      "bytes": 27,
+      "sha256": "7c1d6309d969c3a03dc5cf1e979bafbc7f5fa651f63f341c8d51a55d406b4ff1"
+    },
+    {
+      "path": "test-results/ride-safety.txt",
+      "bytes": 38,
+      "sha256": "e594d7a6159d465fc7c69c4c810d5af25c8fa682683c72187520912f514388f2"
+    },
+    {
+      "path": "test-results/ride-transport.txt",
+      "bytes": 61,
+      "sha256": "afa8282d0103aeb88c4d670ae0aa9d1cdb4dbb9280a8222e9bffcdd2236f5e19"
+    },
+    {
+      "path": "test-results/summary.json",
+      "bytes": 1009,
+      "sha256": "b997d6e80c56d8eb40e06f58088870b2a5621167371097f44b08f1c342bf6f48"
+    },
+    {
+      "path": "test-results/target-polling.txt",
+      "bytes": 136,
+      "sha256": "fb42dbb2eb1d33ab08afc3b0fee69b2581349db0b3ffa423992b8bce2d982dc4"
+    },
+    {
+      "path": "test-results/telemetry-baseline.txt",
+      "bytes": 4471,
+      "sha256": "ff76368dedb6cf0208f3b228906559e00f4f85de8d8a7e09de009b1f0db90664"
+    },
+    {
+      "path": "test-results/telemetry-current.txt",
+      "bytes": 509,
+      "sha256": "0247af27170868ac04453f5067b52f27887cb5ab3c260bb8f08c3befb17abdbb"
+    },
+    {
+      "path": "test-results/ui-baseline.txt",
+      "bytes": 934,
+      "sha256": "4d0b641dc71514fdd903a94b68871517f888e041b6b75a605ede7a144cd0a87a"
+    },
+    {
+      "path": "test-results/ui-current.txt",
+      "bytes": 336,
+      "sha256": "2c7b289bf98415cb484306a3adda49d363c5c045486952c24f1b576347573d9f"
+    },
+    {
+      "path": "TEST_CASES.md",
+      "bytes": 10527,
+      "sha256": "10f69fca67d58b12ce6b6340554d0aaf19fd00e4e7491dd30cee10a3dc84f76b"
+    }
+  ]
+}

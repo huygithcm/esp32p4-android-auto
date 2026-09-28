@@ -47,6 +47,7 @@ static uint32_t millis_now(void) { return now; }
 static bool s_active, s_data_received;
 static uint8_t s_target_vesc_id, rt_sent, io_sent, other[4];
 static uint32_t s_request_interval_ms, s_last_request_ms, s_poll_interval_ms, s_last_poll_ms;
+static uint32_t s_temp_received_mask, s_temp_mos_rx_time, s_temp_motor_rx_time;
 static int s_rt_data, s_io;
 static unsigned rt_count, io_count;
 static void vesc_rt_data_request(void) { rt_sent = s_target_vesc_id; ++rt_count; }
@@ -82,7 +83,11 @@ int main(void) {
     for (unsigned open = 0; open < 2; ++open) {
         vesc_io_data_set_active(open);
         unsigned before_rt = rt_count, before_io = io_count;
+        s_temp_received_mask = 3;
+        s_temp_mos_rx_time = s_temp_motor_rx_time = now;
         on_target_id_changed(20 + open);
+        CHECK(s_temp_received_mask == 0);
+        CHECK(s_temp_mos_rx_time == 0 && s_temp_motor_rx_time == 0);
         now += 1000;
         vesc_rt_data_loop();
         vesc_io_data_loop();

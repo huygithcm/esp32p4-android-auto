@@ -1,0 +1,22 @@
+COMMAND: C:\Users\huybu\AppData\Local\Programs\Python\Python312\python.exe -B scripts/test_mtemp_ui.py --cc C:/msys64/mingw32/bin/gcc.exe
+Production source: working tree
+EXTRACT main/vesc_ui_updater.c:push_zeros_locked sha256=c90585bef6e2c75391bc2fbe9fd8048feb21b18babd775e92a4f2ceaf20491a0
+EXTRACT main/vesc_ui_updater.c:push_rt_locked sha256=e9e72ac1dee0e27489f26be9decb7913eada64ac94985a0a190c0c2af0f2da76
+EXTRACT main/vesc_ui_updater.c:push_cruise_locked sha256=7632cd115172b0bdd48755e137e6536c85c1aeb907838c39eead18e83b6709cc
+EXTRACT main/vesc_ui_updater.c:updater_lv_timer_cb sha256=a5ef6b5191a4976d4eb8fe52461c7a599b901dc36b110b7e723ef4b400f5666a
+EXTRACT Super_VESC_Display/custom/realtime_viewer.c:update_cb sha256=930e7ff1b382481de247a85634e1c5575622ce1b2e9a78dff0000f29c9470842
+PASS video_values_adc_current_gear_independent
+PASS freshness_holds_then_recovers
+PASS screen_gate
+PASS demo_exit
+PASS head2_id_age_and_primary
+PASS selective_without_temperature_does_not_refresh
+PASS legacy_truncation_rejected
+PASS thermal_age_wrap_reset_inject
+PASS realtime_viewer_temperature_age
+M-TEMP UI path: 9/9 PASS (correctness assertions; hardware not tested)
+
+STDERR:
+
+EXIT: 0
+DURATION_SECONDS: 1.422

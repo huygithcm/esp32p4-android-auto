@@ -1,0 +1,10 @@
+; GPIO configure failure is trapped; parent may be woken before sleep expires.
+(def host-wait-start (systime))
+(loopwhile (< (secs-since host-wait-start) 0.3) (sleep 0.01))
+(setq park-on 0)
+(setq host-adc1 1.0)
+(sleep 0.3)
+(test-check (and (= rv-hw-ok 0) (= rv-btn 0) (= rv-armed 0)
+                 (= rv-dir 1) (= safety-fault 0))
+            "unavailable RX hardware remains forward and cannot authorize reverse")
+(test-finish)

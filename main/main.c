@@ -183,11 +183,11 @@ static void install_lvgl_touch_indev(void)
 /* Re-assembled VESC packets land here. Forwards to the RT-data parser,
  * (if enabled) the LISP poll parser, and the BLE NUS bridge so VESC Tool
  * over BLE sees CAN responses. All three filter / gate on their own state
- * (RT/LISP on the leading COMM_PACKET_ID byte, NUS on connection state)
+ * (RT on sender and COMM_PACKET_ID, LISP on COMM_PACKET_ID, NUS on connection state)
  * so the fan-out is unconditional. */
 static void vesc_packet_dispatch(const uint8_t *data, unsigned int len)
 {
-    vesc_rt_data_process_response(data, len);
+    vesc_rt_data_process_can_response(data, len, comm_can_get_packet_sender_id());
     /* COMM_LISP_GET_STATS replies. Unconditional: the periodic poll is off by
      * default, but the web editor asks for stats one request at a time and
      * still needs the answer parsed. Gates on data[0] like everything here. */

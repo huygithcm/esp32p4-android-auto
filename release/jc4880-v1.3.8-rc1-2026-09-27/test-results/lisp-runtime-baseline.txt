@@ -1,0 +1,35 @@
+Upstream LispBM: bldc 20cbb362687291242ab90b99f25fbfe8835540fc; 32-bit host; source release\jc4880-v1.3.7-2026-09-19-7c77f2b\main.lisp
+"ride config: no eeprom block, using defaults"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "motor worker survives real VM startup"
+PASS "TX worker survives real VM startup"
+PASS "RX worker survives real VM startup"
+PASS "healthy ADC NONE reaches no input fault"
+PASS "native-input-only executes actual trap/match"
+PASS "supported min-speed trap succeeds"
+   Error (trapped): unsupported
+   CTX: 432
+   Current: (quote unsupported)
+   In: exit-error
+
+   Between row 1077 and 1078
+
+eval_cps.c line number: 3009
+"ride SET: min-speed failed: unsupported"
+PASS "unsupported min-speed is contained by trap"
+PASS "real panel event thread returns Park plus three modes"
+"Mode 2: 70.000000f32 A req, 70.000000f32 A effective"
+PASS "PARK permits mode 2 through real panel event and STATE reply"
+"Mode 3: 100.000000f32 A req, 70.000000f32 A effective"
+PASS "PARK permits mode 3 through real panel event"
+PASS "PARK suppresses held throttle with running motor worker"
+PASS "idle healthy worker can exit PARK"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "real TX monitor cycles mode on debounced release"
+PASS "ADC range failure latches PARK and zero output"
+PASS "fault refuses mode selection"
+FAIL "fault safety poll carries INPUT_FAULT instead of OK"
+FAIL "fault sequenced status carries INPUT_FAULT instead of OK"
+PASS "recovered ADC does not silently clear latched drive fault"
+CONTEXT 432 finished: t
+18 actual LispBM checks; FAILED; ESC APIs are host fixtures

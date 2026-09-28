@@ -1,0 +1,88 @@
+[
+  {
+    "suite": "CAN",
+    "total": 22,
+    "previously_failed": [
+      "missing_unchanged_tail_refresh",
+      "missing_tail_numeric_replay",
+      "wrong_sender_temperature",
+      "short_status4_dlc",
+      "out_of_order_fragments",
+      "malformed_control_dlc",
+      "status_dlc_validation",
+      "overflow_and_recovery",
+      "duplicate_fragment_recovery",
+      "matching_sender_wrong_motor",
+      "inconsistent_sender_identity",
+      "missing_motor_identity"
+    ],
+    "all_now_pass": true,
+    "baseline_log": "docs/diagnostics/rc2-2026-09-28/transport-baseline.txt",
+    "rerun_log": "docs/diagnostics/rc2-rerun-2026-09-28/can-transport.txt"
+  },
+  {
+    "suite": "Telemetry",
+    "total": 16,
+    "previously_failed": [
+      "legacy_all_prefixes_rejected",
+      "truncated_selective_no_refresh",
+      "truncated_selective_atomic",
+      "all_selective_prefixes_and_recovery",
+      "truncated_current_no_field_shift",
+      "request_includes_motor_identity",
+      "can_motor_identity"
+    ],
+    "all_now_pass": true,
+    "baseline_log": "docs/diagnostics/rc2-2026-09-28/telemetry-baseline.txt",
+    "rerun_log": "docs/diagnostics/rc2-rerun-2026-09-28/telemetry.txt"
+  },
+  {
+    "suite": "Thermal UI",
+    "total": 9,
+    "previously_failed": [
+      "selective_without_temperature_does_not_refresh",
+      "legacy_truncation_rejected",
+      "thermal_age_wrap_reset_inject",
+      "realtime_viewer_temperature_age"
+    ],
+    "all_now_pass": true,
+    "baseline_log": "docs/diagnostics/rc2-2026-09-28/mtemp-ui-baseline.txt",
+    "rerun_log": "docs/diagnostics/rc2-rerun-2026-09-28/thermal-ui.txt"
+  },
+  {
+    "suite": "Drawer",
+    "total": 9,
+    "previously_failed": [
+      "opening_release_outside",
+      "opening_release_inside",
+      "next_outside_tap",
+      "missing_descriptor",
+      "late_descriptor",
+      "reopen_during_close"
+    ],
+    "all_now_pass": true,
+    "baseline_log": "release/jc4880-v1.3.8-rc1-2026-09-27/test-results/ui-baseline.txt",
+    "rerun_log": "docs/diagnostics/rc2-rerun-2026-09-28/drawer-ui.txt"
+  },
+  {
+    "suite": "Lisp branch",
+    "previously_failed": [
+      "latched input fault blocks mode and remains visible in all polls",
+      "unsupported native input at boot reports cause 9 instead of OK",
+      "missing or stale motor worker reports input fault before supervisor"
+    ],
+    "all_now_pass": true,
+    "baseline_log": "release/jc4880-v1.3.8-rc1-2026-09-27/test-results/lisp-branch-baseline.txt",
+    "rerun_log": "docs/diagnostics/rc2-rerun-2026-09-28/lisp-branch.txt"
+  },
+  {
+    "suite": "LispBM",
+    "previously_failed": [
+      "\"fault safety poll carries INPUT_FAULT instead of OK\"",
+      "\"fault sequenced status carries INPUT_FAULT instead of OK\""
+    ],
+    "all_now_pass": true,
+    "baseline_log": "release/jc4880-v1.3.8-rc1-2026-09-27/test-results/lisp-runtime-baseline.txt",
+    "rerun_log": "docs/diagnostics/rc2-rerun-2026-09-28/lisp-runtime-6.05.txt"
+  }
+]

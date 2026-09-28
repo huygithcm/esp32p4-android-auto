@@ -1,0 +1,38 @@
+[
+  {
+    "suite": "lisp-runtime-6.05",
+    "command": [
+      "C:\\Users\\huybu\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "-B",
+      "scripts/test_lisp_runtime.py",
+      "--vesc-version",
+      "6.05",
+      "--heap-cells",
+      "2464",
+      "--cc",
+      "C:/msys64/mingw32/bin/gcc.exe",
+      "--source",
+      "release/jc4880-v1.3.8-rc2-2026-09-28/main.lisp"
+    ],
+    "exit_code": 0,
+    "duration_seconds": 18.281000000002678
+  },
+  {
+    "suite": "lisp-runtime-7.00",
+    "command": [
+      "C:\\Users\\huybu\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "-B",
+      "scripts/test_lisp_runtime.py",
+      "--vesc-version",
+      "7.00",
+      "--heap-cells",
+      "4096",
+      "--cc",
+      "C:/msys64/mingw32/bin/gcc.exe",
+      "--source",
+      "release/jc4880-v1.3.8-rc2-2026-09-28/main.lisp"
+    ],
+    "exit_code": 0,
+    "duration_seconds": 23.625
+  }
+]

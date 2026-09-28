@@ -1,0 +1,82 @@
+--- rc2/main.lisp
++++ rc2-diag1/main.lisp
+@@ -16,6 +16,12 @@
+ (def throttle-on 0)
+ (def park-on 1)
+ (def safety-fault 0)
++; RC2 diag1: volatile first RECORDED guard; unchanged 100 ms thresholds.
++(def diag-first 0)
++(def diag-at 0)
++(def diag-tx-age 0.0)
++(def diag-rx-age 0.0)
++(def diag-motor-age 0.0)
+ (def motor-seen 0)
+ (def motor-live 0)
+ (def rv-seen 0)
+@@ -119,7 +125,21 @@
+     (match (trap (conf-get 'adc-ctrl-type))
+         ((exit-ok (? value)) (= value 0))
+         (_ nil)))
+-(if (not (native-input-only)) (setq safety-fault 9))
++; Numeric snapshot only: no I/O, trap or yield inside atomic.
++; Ages describe capture time, after the stop, not exact predicate time.
++(defun diag-mark (code)
++    (atomic
++        (if (= diag-first 0) {
++            (setq diag-at (systime))
++            (setq diag-tx-age (secs-since tx-seen))
++            (setq diag-rx-age (secs-since rv-seen))
++            (setq diag-motor-age (secs-since motor-seen))
++            (setq diag-first code)
++        })))
++(if (not (native-input-only)) {
++    (setq safety-fault 9)
++    (diag-mark 1)
++})
+ 
+ (defun drive-clear () {
+     (setq out-rel 0.0) (setq rv-rel 0.0)
+@@ -153,6 +173,12 @@
+     (setq park-on 1) (setq throttle-on 0)
+     (drive-clear)
+     (setq rv-dir 0)
++})
++; Preserve the fault latch and stop before any diagnostic capture.
++(defun diag-trip (code) {
++    (ride-input-fault)
++    (set-current 0)
++    (diag-mark code)
+ })
+ ; Profiles scale the current limit instead of overwriting it: Motor Current Max
+ ; in VESC Tool stays the master value (applied live, no LISP restart) and each
+@@ -871,12 +897,14 @@
+ })
+ (defun motor-control-step () {
+         (app-disable-output -1)
+-        (if (or (not (native-input-only))
+-                (not (app-adc-range-ok))
+-                (and (= tx-live 1) (> (secs-since tx-seen) 0.1))
+-                (and (= rm-rev-en 1) (= rv-hw-ok 1)
+-                     (> (secs-since rv-seen) 0.1)))
+-            (ride-input-fault))
++        (cond
++            ((not (native-input-only)) (diag-trip 2))
++            ((not (app-adc-range-ok)) (diag-trip 3))
++            ((and (= tx-live 1) (> (secs-since tx-seen) 0.1))
++                (diag-trip 4))
++            ((and (= rm-rev-en 1) (= rv-hw-ok 1)
++                  (> (secs-since rv-seen) 0.1))
++                (diag-trip 5)))
+         (reverse-step)
+         (sync-current-scale)
+         (let ((thr   (get-adc-decoded 0))
+@@ -935,8 +963,7 @@
+ (defun motor-supervisor () {
+     (loopwhile t {
+         (if (and (= motor-live 1) (> (secs-since motor-seen) 0.1)) {
+-            (ride-input-fault)
+-            (set-current 0)
++            (diag-trip 6)
+         })
+         (sleep 0.02)
+     })

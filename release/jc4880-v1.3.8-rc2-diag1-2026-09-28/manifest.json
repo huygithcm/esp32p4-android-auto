@@ -1,0 +1,41 @@
+{
+  "version": "1.3.8-rc2-diag1",
+  "date": "2026-09-28",
+  "kind": "diagnostic-lisp-only",
+  "p4": "existing JC4880 RC2 unchanged",
+  "vesc_runtime": "6.05",
+  "host_checks_passed": 98,
+  "hardware_verified": false,
+  "files": [
+    {
+      "path": "main.lisp",
+      "bytes": 50138,
+      "sha256": "175b96028c6c95d15967c3085fe5ec234c87a23cce34f5bd4e76f8427b257c62"
+    },
+    {
+      "path": "RC2_DIAGNOSTIC.diff",
+      "bytes": 2770,
+      "sha256": "e3bc0a011ef87810411fea02fe9005a6eb428a3e303f5eb9c31dfc653bf32cd0"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3914,
+      "sha256": "348fdffb4f0b55485e4299112474b97c9b7c0010c08b3f15a6a6d9df5bd0bf9a"
+    },
+    {
+      "path": "test-results/lisp-runtime-605-initial-failed.txt",
+      "bytes": 16428,
+      "sha256": "7ae95ac7d9391bd70ce3b12bd365aa5a4814b87bbbca365b4f2e07b0c80bffee"
+    },
+    {
+      "path": "test-results/lisp-runtime-605.txt",
+      "bytes": 8860,
+      "sha256": "46835b6ee2e67e56c4a94c815cdf14036e0d2b4205dbf3ac58627893e0da3efc"
+    },
+    {
+      "path": "test-results/VERIFICATION.md",
+      "bytes": 1187,
+      "sha256": "72366c45241555bf5a1e7d5c4f88f8ad8c965c7ffcfe28b578261167f9921691"
+    }
+  ]
+}

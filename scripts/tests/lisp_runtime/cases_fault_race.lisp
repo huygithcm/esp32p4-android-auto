@@ -1,0 +1,20 @@
+; Two schedulable contexts compete to latch distinct causes. Either may win.
+; No real failure is injected: this isolates atomic diagnostic first-wins.
+(sleep 0.2)
+(test-check (= diag-first 0) "competing writers case starts healthy")
+(def host-race-go nil)
+(def host-race-done 0)
+(defun host-race (code) {
+    (loopwhile (not host-race-go) (sleep 0.001))
+    (diag-trip code)
+    (atomic (setq host-race-done (+ host-race-done 1)))
+})
+(spawn 100 host-race 3)
+(spawn 100 host-race 4)
+(setq host-race-go t)
+(def host-wait-start (systime))
+(loopwhile (and (< host-race-done 2) (< (secs-since host-wait-start) 0.5))
+    (sleep 0.01))
+(test-check (= host-race-done 2) "both competing diagnostic writers complete")
+(test-check (or (= diag-first 3) (= diag-first 4)) "exactly one competing cause wins")
+(def host-expected-cause diag-first)

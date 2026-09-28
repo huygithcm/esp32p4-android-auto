@@ -1,0 +1,5 @@
+COMMAND: C:\msys64\mingw32\bin\gcc.exe -std=c11 -Wall -Wextra -I components/vesc_can/include scripts/tests/test_ride_gear.c -lm -o C:\Users\huybu\AppData\Local\Temp\vscode-agent-codex-sandbox-TuN8eo\rc2-rerun-ride-v07wy93i\gear.exe
+Ride gear: 81 checks PASS
+
+EXIT: 0
+DURATION_SECONDS: 0.250

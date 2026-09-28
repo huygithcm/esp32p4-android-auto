@@ -1,0 +1,79 @@
+Executing action: all (aliases: build)
+Running ninja in directory C:\esp32p4-android-auto\build_jc4880
+Executing "ninja all"...
+[1/21] Performing build step for 'bootloader'
+
+[1/1] C:\WINDOWS\system32\cmd.exe /C "cd /D C:\esp32p4-android-auto\build_jc4880\bootloader\esp-idf\esptool_py && C:\Espressif\tools\python\v5.5.3\venv\Scripts\python.exe C:/esp/v5.5.3/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x2000 C:/esp32p4-android-auto/build_jc4880/bootloader/bootloader.bin"
+
+
+Bootloader binary size 0x5df0 bytes. 0x210 bytes (2%) free.
+
+
+
+[2/21] No install step for 'bootloader'
+
+[3/21] Building C object esp-idf/vesc_can/CMakeFiles/__idf_vesc_can.dir/vesc_lisp_code.c.obj
+
+[4/21] Building C object esp-idf/vesc_can/CMakeFiles/__idf_vesc_can.dir/vesc_rt_data.c.obj
+
+[5/21] Building C object esp-idf/trip_log/CMakeFiles/__idf_trip_log.dir/trip_log.c.obj
+
+[6/21] Completed 'bootloader'
+
+[7/21] Linking C static library esp-idf\vesc_can\libvesc_can.a
+
+[8/21] Linking C static library esp-idf\trip_log\libtrip_log.a
+
+[9/21] Building C object esp-idf/vesc_ui/CMakeFiles/__idf_vesc_ui.dir/__/__/Super_VESC_Display/custom/realtime_viewer.c.obj
+
+[10/21] Linking C static library esp-idf\vesc_ui\libvesc_ui.a
+
+[11/21] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/aa_overlay.c.obj
+
+[12/21] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/vesc_sim.c.obj
+
+[13/21] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/ble_nus.c.obj
+
+[14/21] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/vesc_ui_updater.c.obj
+
+[15/21] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/main.c.obj
+
+[16/21] Linking C static library esp-idf\main\libmain.a
+
+[17/21] Generating esp-idf/esp_system/ld/sections.ld
+
+[18/21] Linking CXX executable esp32p4_android_auto.elf
+
+[19/21] Generating binary image from built executable
+
+esptool.py v4.12.0
+
+
+Creating esp32p4 image...
+
+
+Merged 3 ELF sections
+
+
+Successfully created esp32p4 image.
+
+
+Generated C:/esp32p4-android-auto/build_jc4880/esp32p4_android_auto.bin
+
+[20/21] Running utility command for gen_project_binary
+
+[21/21] C:\WINDOWS\system32\cmd.exe /C "cd /D C:\esp32p4-android-auto\build_jc4880\esp-idf\esptool_py && C:\Espressif\tools\python\v5.5.3\venv\Scripts\python.exe C:/esp/v5.5.3/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app C:/esp32p4-android-auto/build_jc4880/partition_table/partition-table.bin C:/esp32p4-android-auto/build_jc4880/esp32p4_android_auto.bin"
+
+esp32p4_android_auto.bin binary size 0x445920 bytes. Smallest app partition is 0x500000 bytes. 0xba6e0 bytes (15%) free.
+
+
+
+
+Project build complete. To flash, run:
+ idf.py flash
+or
+ idf.py -p PORT flash
+or
+ python -m esptool --chip esp32p4 -b 460800 --before default_reset --after hard_reset write_flash --flash_mode dio --flash_size 16MB --flash_freq 80m 0x2000 build_jc4880\bootloader\bootloader.bin 0x8000 build_jc4880\partition_table\partition-table.bin 0xf000 build_jc4880\ota_data_initial.bin 0x20000 build_jc4880\esp32p4_android_auto.bin
+or from the "C:\esp32p4-android-auto\build_jc4880" directory
+ python -m esptool --chip esp32p4 -b 460800 --before default_reset --after hard_reset write_flash "@flash_args"

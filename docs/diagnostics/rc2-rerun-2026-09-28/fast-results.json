@@ -1,0 +1,76 @@
+[
+  {
+    "suite": "can-transport",
+    "command": [
+      "C:\\Users\\huybu\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "-B",
+      "scripts/test_mtemp_transport.py",
+      "--cc",
+      "C:/msys64/mingw32/bin/gcc.exe"
+    ],
+    "exit_code": 0,
+    "duration_seconds": 1.5940000000118744
+  },
+  {
+    "suite": "telemetry",
+    "command": [
+      "C:\\Users\\huybu\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "-B",
+      "scripts/test_vesc_telemetry.py",
+      "--cc",
+      "C:/msys64/mingw32/bin/gcc.exe"
+    ],
+    "exit_code": 0,
+    "duration_seconds": 1.5160000000032596
+  },
+  {
+    "suite": "thermal-ui",
+    "command": [
+      "C:\\Users\\huybu\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "-B",
+      "scripts/test_mtemp_ui.py",
+      "--cc",
+      "C:/msys64/mingw32/bin/gcc.exe"
+    ],
+    "exit_code": 0,
+    "duration_seconds": 1.4220000000059372
+  },
+  {
+    "suite": "conversion-6.05",
+    "command": [
+      "C:\\Users\\huybu\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "-B",
+      "scripts/test_mtemp_conversion.py",
+      "--cc",
+      "C:/msys64/mingw32/bin/gcc.exe",
+      "--vesc-version",
+      "6.05"
+    ],
+    "exit_code": 0,
+    "duration_seconds": 1.4689999999973224
+  },
+  {
+    "suite": "target-polling",
+    "command": [
+      "C:\\Users\\huybu\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "-B",
+      "scripts/test_target_polling.py",
+      "--cc",
+      "C:/msys64/mingw32/bin/gcc.exe"
+    ],
+    "exit_code": 0,
+    "duration_seconds": 0.6410000000032596
+  },
+  {
+    "suite": "lisp-branch",
+    "command": [
+      "C:\\Users\\huybu\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "-B",
+      "scripts/test_lisp_safety.py",
+      "--source",
+      "release/jc4880-v1.3.8-rc2-2026-09-28/main.lisp"
+    ],
+    "exit_code": 0,
+    "duration_seconds": 0.17199999999138527
+  }
+]

@@ -1,0 +1,21 @@
+Compiling CAN/RT/IO/buffer/CRC at e7f0b166c45d01a7c158ba3b2e1af3e27640fdb6
+PASS valid_fragmented_video_values
+PASS adc_custom_interleaving
+PASS overlapping_replies_crc_drop
+PASS missing_changed_tail_crc_drop
+OBSERVE missing temperature tail: deliveries 1 -> 2; sample time 1000 -> 5000
+FAIL line 116: deliveries==before
+FAIL line 116: vesc_rt_data_get_latest()->rx_time==time
+FAIL missing_unchanged_tail_refresh
+OBSERVE missing temperature tail: -17 -> 12.5 C (retained bytes from older reply)
+FAIL line 127: fabsf((vesc_rt_data_get_latest()->temp_motor)-(-17)) < 0.0002f
+FAIL missing_tail_numeric_replay
+OBSERVE target=10, reply sender=11: 12.5 -> 2.0 C
+FAIL line 135: fabsf((vesc_rt_data_get_latest()->temp_motor)-(12.5f)) < 0.0002f
+FAIL wrong_sender_temperature
+PASS status4_is_separate
+OBSERVE STATUS4 DLC=2: stored=yes motor=-17.0; RT=12.5 C
+FAIL line 157: status==NULL
+FAIL short_status4_dlc
+M-TEMP transport: 5/9 PASS
+Violated contracts: missing_unchanged_tail_refresh, missing_tail_numeric_replay, wrong_sender_temperature, short_status4_dlc

@@ -1,0 +1,12 @@
+{
+  "suite": "drawer-ui",
+  "command": [
+    "C:\\Users\\huybu\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "-B",
+    "scripts/test_lisp_panel_ui.py",
+    "--cc",
+    "C:/msys64/mingw32/bin/gcc.exe"
+  ],
+  "exit_code": 0,
+  "duration_seconds": 33.15600000000268
+}

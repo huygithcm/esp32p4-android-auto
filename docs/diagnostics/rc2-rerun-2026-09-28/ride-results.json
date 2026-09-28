@@ -1,0 +1,17 @@
+[
+  {
+    "suite": "ride-safety",
+    "exit_code": 0,
+    "duration_seconds": 0.46800000000803266
+  },
+  {
+    "suite": "ride-transport",
+    "exit_code": 0,
+    "duration_seconds": 0.5629999999946449
+  },
+  {
+    "suite": "ride-gear",
+    "exit_code": 0,
+    "duration_seconds": 0.25
+  }
+]

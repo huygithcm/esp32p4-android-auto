@@ -162,8 +162,8 @@ static void update_cb(lv_timer_t *t)
     set_val(RT_DUTY,   fresh, "%.1f %%",   d->duty_now * 100.0);
     set_val(RT_RPM,    fresh, "%.0f",      d->rpm);
     set_val(RT_SPEED,  fresh, "%.1f km/h", d->speed * 3.6);
-    set_val(RT_TFET,   fresh, "%.1f C",    d->temp_mos);
-    set_val(RT_TMOT,   fresh, "%.1f C",    d->temp_motor);
+    set_val(RT_TFET,   vesc_rt_data_temp_mos_is_fresh(), "%.1f C", d->temp_mos);
+    set_val(RT_TMOT,   vesc_rt_data_temp_motor_is_fresh(), "%.1f C", d->temp_motor);
     set_val(RT_AH,     fresh, "%.3f Ah",   d->amp_hours);
     set_val(RT_WH,     fresh, "%.1f Wh",   d->watt_hours);
     set_val(RT_FAULT,  fresh, "%.0f",      (double)d->fault_code);

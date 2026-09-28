@@ -1,0 +1,10 @@
+(sleep 0.2)
+(test-check (and (= rv-btn 1) (= rv-seen-release 0))
+            "RX held from boot has no observed release")
+; Exercise real reverse-step separately from PARK exit's held-button gate.
+(setq park-on 0)
+(setq host-adc1 1.0)
+(sleep 0.4)
+(test-check (and (= rv-armed 0) (= rv-dir 1) (= safety-fault 0))
+            "held-at-boot RX remains forward and cannot arm with brake")
+(test-finish)

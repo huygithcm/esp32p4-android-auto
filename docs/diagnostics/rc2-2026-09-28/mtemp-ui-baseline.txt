@@ -1,0 +1,38 @@
+COMMAND: C:\Users\huybu\AppData\Local\Programs\Python\Python312\python.exe scripts/test_mtemp_ui.py --cc C:/msys64/mingw32/bin/gcc.exe --baseline-ref 7c77f2b
+Production source: 7c77f2b3595fcc0258e26d2049210c4e507bf8d8
+EXTRACT main/vesc_ui_updater.c:push_zeros_locked sha256=c90585bef6e2c75391bc2fbe9fd8048feb21b18babd775e92a4f2ceaf20491a0
+EXTRACT main/vesc_ui_updater.c:push_rt_locked sha256=59d80ececf5e7cdf710a529513b3aff04a20317dabcbbc1a7624031b3f11f113
+EXTRACT main/vesc_ui_updater.c:push_cruise_locked sha256=7632cd115172b0bdd48755e137e6536c85c1aeb907838c39eead18e83b6709cc
+EXTRACT main/vesc_ui_updater.c:updater_lv_timer_cb sha256=a5ef6b5191a4976d4eb8fe52461c7a599b901dc36b110b7e723ef4b400f5666a
+EXTRACT Super_VESC_Display/custom/realtime_viewer.c:update_cb sha256=0681c7fb56f323ff3166bb9e1cf492f3c7b4ed7b8b67c22df2e6c3a15f934b11
+PASS video_values_adc_current_gear_independent
+PASS freshness_holds_then_recovers
+PASS screen_gate
+PASS demo_exit
+PASS head2_id_age_and_primary
+FAIL selective_without_temperature_does_not_refresh
+FAIL line 172: !vesc_rt_data_is_fresh()
+FAIL line 172: motor_calls==before
+FAIL line 174: motor_calls==before
+FAIL line 178: motor_calls==before
+FAIL line 179: trip_log_calls==trips_before+2
+FAIL line 180: motor_calls==before+1
+FAIL line 181: trip_log_calls==trips_before+3
+FAIL legacy_truncation_rejected
+FAIL line 187: !connected
+FAIL line 187: motor_calls==before
+FAIL line 187: fabs((double)(displayed_motor)-(double)(12.5f)) < 0.0002
+FAIL line 189: !connected
+FAIL line 189: motor_calls==before
+FAIL line 189: fabs((double)(displayed_motor)-(double)(12.5f)) < 0.0002
+FAIL thermal_age_wrap_reset_inject
+FAIL line 197: motor_calls==before
+FAIL line 200: motor_calls==before
+FAIL line 202: motor_calls==before+1
+FAIL realtime_viewer_temperature_age
+FAIL line 212: !viewer_valid[RT_TMOT]
+FAIL line 212: !viewer_valid[RT_TFET]
+FAIL line 214: !viewer_valid[RT_TFET]
+M-TEMP UI path: 5/9 PASS (correctness assertions; hardware not tested)
+
+EXIT: 1

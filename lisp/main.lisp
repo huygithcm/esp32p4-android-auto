@@ -98,8 +98,8 @@
 ; Safe start, the reverse twin of `armed`: a button shorted to GND since boot
 ; must not arm reverse. Nothing happens until it has been seen released once.
 (def rv-seen-release 0)
-; Set by the monitor thread only after gpio-configure has returned. If RX
-; cannot be configured or read, the thread dies there and this stays 0, which
+; Set only after the first successful RX read and heartbeat publication. If RX
+; cannot be configured or initially read, this stays 0, which
 ; is what makes reverse report UNSUPPORTED_HARDWARE rather than pretending.
 (def rv-hw-ok 0)
 ; @const-start flashes every definition below, freeing the cons heap. Without it
@@ -389,6 +389,15 @@
 ; Sent after SELECT and on the dashboard's own cadence. active-speed is what is
 ; actually applied, not what the profile says it should be, so a mismatch is
 ; visible rather than assumed away.
+; A poll reports the active drive fault before the last command refusal.
+; Otherwise a latched input fault can block every mode while reporting OK.
+; Keep command ACK results separate: an idempotent PARK command can succeed
+; while propulsion remains inhibited by the fault.
+(defun ride-status-fault ()
+    (cond
+        ((not (= safety-fault 0)) safety-fault)
+        ((or (= motor-live 0) (> (secs-since motor-seen) 0.1)) 12)
+        (t rm-fault)))
 (defun rm-send-status (reply-id) {
     (setq pi 0)
     (pu8 0x56) (pu8 0x50) (pu8 0x89)
@@ -399,7 +408,7 @@
     (pu16 rm-esc-max)
     (pu8 (if (= rv-dir -1) 255 rv-dir))   ; i8 on the wire
     (pu8 rv-btn) (pu8 rv-armed)
-    (pu8 rm-persist) (pu8 rm-fault)
+    (pu8 rm-persist) (pu8 (ride-status-fault))
     (send-data pbuf 2 reply-id)
 })
 (defun panel-send-ui (reply-id) {
@@ -447,7 +456,7 @@
     (pu16 (rm-amps-of current-profile)) (pu16 (rm-effective-dA))
     (pu16 rm-esc-max)
     (pu8 (if (= rv-dir -1) 255 rv-dir))
-    (pu8 rv-btn) (pu8 rv-armed) (pu8 rm-persist) (pu8 rm-fault)
+    (pu8 rv-btn) (pu8 rv-armed) (pu8 rm-persist) (pu8 (ride-status-fault))
     (bufcpy status-seq-buf 0 pbuf 0 19)
     (send-data status-seq-buf 2 reply-id)
 })
@@ -474,7 +483,7 @@
 (defun safety-query (reply-id seq) {
     (setq safety-owner reply-id) (setq safety-token seq)
     (setq safety-token-at (systime)) (setq safety-consumed 0)
-    (safety-send reply-id seq 0x8B rm-fault)
+    (safety-send reply-id seq 0x8B (ride-status-fault))
 })
 (defun safety-set (reply-id seq on) {
     (if (and (= reply-id safety-owner) (= seq safety-token)
@@ -811,11 +820,10 @@
 ;
 ; The pin is still configured HERE rather than at load time, and this thread is
 ; still spawned with spawn-trap, so a GPIO failure kills this thread alone,
-; leaves rv-hw-ok at 0, and reverse reports UNSUPPORTED_HARDWARE while forward
-; riding carries on untouched.
+; leaves rv-hw-ok at 0 on initial failure, so reverse remains unsupported.
+; Failure after a successful read is caught by the existing heartbeat watchdog.
 (defun monitor-reverse () {
     (gpio-configure 'pin-rx 'pin-mode-in-pu)
-    (setq rv-hw-ok 1)
     (loopwhile t {
         ; Active-low: the button shorts the pin to ESC ground.
         (let ((raw (if (= (gpio-read 'pin-rx) 0) 1 0))) {
@@ -831,7 +839,12 @@
                 (if (= rv-btn-raw 0) (setq rv-seen-release 1))
             })
         })
-        (setq rv-seen (systime))
+        ; Publish readiness only with a successful sample and its heartbeat.
+        ; Otherwise the motor can treat the initial timestamp 0 as stale.
+        (atomic {
+            (setq rv-seen (systime))
+            (setq rv-hw-ok 1)
+        })
         (sleep 0.01)
     })
 })

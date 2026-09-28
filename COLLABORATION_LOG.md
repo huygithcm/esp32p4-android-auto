@@ -27,6 +27,457 @@ present from work performed in the current session.
 - Log material edits and verification before handing work to another actor.
 
 ## Entries
+### 2026-09-28 - Codex - Authorized local checkpoint; reverse hardware issue open
+- User explicitly requests commit of current branch and confirms modes work
+  except R. Latest reproduction: squeeze brake, hold R, release brake; R
+  indicator on ESC stays lit. Preserve wording; earlier called brake indicator.
+- Added docs/HARDWARE_STATUS_2026-09-28.md with current hardware acceptance,
+  exact pending symptom, arming evidence and next read-only capture. R remains
+  unresolved; LED alone is not proof of braking command or a fixed reverse flow.
+- Scope: checkpoint current shared UI/CAN/Lisp fixes, tests, diagnostics and
+  versioned RC1/RC2/diag packages, preserving collaborator work. Release binaries
+  follow existing tracked release convention. No source edits in commit step.
+- Validation: verified existing156/156 actual6.05VM log and unchanged diag2
+  hash; staged205 files reviewed. Source/tests/new handoff whitespace passes.
+  Full whitespace check reports20 items only in saved logs/diff/package README;
+  preserved historical release evidence and checksums rather than rewriting it.
+  Credential scan resolved embedded PEM to exact existing tracked well-known
+  Android Auto header in main/aa_certs.h and prior1.3.7 image, not new credentials.
+  No redundant firmware build or hardware write. Final branch/status checked
+  after commit; commit hash is available in git log rather than self-reference.
+- Status: local checkpoint authorized; no push requested. Remaining modeR
+  hardware symptom is intentionally open, not claimed solved by host tests.
+
+### 2026-09-28 - Codex - Check claimed braking after reverse brake release
+- Hardware after-release tuple: ADC1=0 brkrel0 RXbtn1 armed0 dir0 ADC0=0
+  fault0 motorAge.0116 rampNeg.1. Software brake branch is inactive; state is
+  unarmed INTERLOCK. Earlier RXbtn0/brake1 and now RXbtn1/brake0 do not prove
+  simultaneous arming inputs. Requested heldRX+brake1s stopped/throttle0 sample.
+- Independent source review: brake branch ends at brkrel<=.001 and ADC1<=.05;
+  tiny residual below threshold is permitted. Official6.05 FOC set-current
+  replaces BRAKE mode; off-delay can retain PWM at current0, not freewheel proof.
+- Test worker added --reverse-brake + cases, last brake command-kind recording
+  and configurable host ramp values. Final156/156 actual6.05VM heap2464 pass
+  (previous142+14), exit0; unchanged diag2SHA5fd3f81...969c95.
+- Initial3 new assertion failures were exact-zero test errors; reviewed fix
+  uses real<=.001 threshold AND actual output API kind. Initial/final logs kept
+  docs/diagnostics/reverse-brake-diag2-2026-09-28/. Max5s nominal ramp took~7.99s
+  on host: fixed per-iteration ramp is not an ESC wall-time guarantee.
+- Files: scripts/test_lisp_runtime.py and test fixtures, docs/REVERSE_BRAKE_DIAG2_2026-09-28.md.
+  Primary verified final log counts, hash, syntax; source reviewer found no
+  permanent brake latch. No production/release edits, hardware writes or buildP4.
+- Handoff: await simultaneous arming snapshot. Do not bypass brake or change
+  input polarity based on the current report; physical motor behavior unverified.
+
+### 2026-09-28 - Codex - Diagnose reverse request missing on RX in diag2
+- User cannot enter R; no dash, remains forward mode. Hardware state tuple:
+  rev1 park0 fault0 hw1 release1 btn0 braketicks0 armed0 dir1 throttle0 brake1
+  speed0.000016. Follow-up raw tuple(1 0 0 .0064), user confirms holding reverse
+  button and brake. Direct RX remains high/released while its worker is fresh.
+- Cause localized to missing active-low RX request at sample, not brake ADC,
+  mode2 policy, or watchdog. Exact switch/pin/ownership cause not yet known;
+  requested ESC board/model and actual switch terminal labels.
+- Official6.05 audit: pin-rx is HW_UART_RX_PORT/PIN; script uses direct GPIO,
+  independent of Tool button-inversion settings. min-speed -fabs magnitude is
+  correct; no sign fix. No production code or hardware/config edits made.
+- Test worker: optional --reverse-flow, new case/setup fixtures, current API
+  fixture records supported1/2 args and negative command. Existing127 plus15
+  reverse checks=142/142PASS actual6.05VM heap2464, exit0. Mode2+btn0 remains
+  forward; btn1/brake0 interlocks; proper arm then throttle commands negative
+  current (-2.8A under7A cap). ESC APIs mocked, no physical rotation claim.
+- Files: scripts/test_lisp_runtime.py, scripts/tests/lisp_runtime fixtures;
+  docs/REVERSE_INPUT_DIAG2_2026-09-28.md and docs/diagnostics/reverse-diag2-2026-09-28/.
+- Primary verified log counts, unchanged diag2SHA5fd3f81...969c95 and runner
+  syntax. Handoff: await board/pin mapping, no guessed connector rewiring.
+
+### 2026-09-28 - Codex - Fix RX readiness before first heartbeat (diag2)
+- Hardware diag1 tuple: (5 12 5 18288522u32 .000800f32 1828.852173f32
+  1828.852417f32). RX readiness was published before first read/heartbeat;
+  enabled reverse allowed first motor iteration to treat timestamp0 as stale.
+- Files: narrow fix in lisp/main.lisp preserving prior status-fault changes;
+  separate release/jc4880-v1.3.8-rc2-diag2-2026-09-28/main.lisp retains diag1
+  recorder plus fix, README/diff/manifest/test-results. Original RC2/diag1 intact.
+- Fix: publish RX heartbeat and readiness together in a tiny atomic block only
+  after successful read/debounce. Initial RX failure stays unsupported; later
+  stale RX with reverse enabled still latches fault12. Threshold100ms unchanged.
+- Test worker: --rx-startup and five new fixture/case files; valid EEPROM reverse
+  enabled before spawns, forced scheduling gap, native clock and real upstreamVM.
+  Baseline reproduces same signature: freshTX, RX/motor ages=uptime, cause5.
+- Checks: official6.05VM heap2464: baseline45pass/11fail expected; diag2 127/127;
+  canonical56/56. Primary branch17/17, log counts/hash/syntax/diff checks pass.
+  Initial clock-wrapper fixture timeout saved separately, corrected native-clock
+  fixtures used for final runs. Independent source/test review found no blocker.
+- diag2 SHA2565fd3f81d06429da0525bd912221de0c5ae129541f80631c27e308df8fc969c95.
+- Hardware follow-up: user diag2 readback all0 twice, confirming PARK/no recorded
+  fault in observed run(s). Does not alone prove RX first sample succeeded.
+- Handoff: read rv-hw-ok, rv-seen-release, RX age, motor-live/motor age; mode
+  selection feedback requested. Reverse interaction and repeated startup pending.
+  No P4 changes/build, agent flash, config write, commit/push or Drive upload.
+
+### 2026-09-28 - Codex - RC2 diag1 first-fault capture for persistent mode dash
+- Hardware feedback: native-input-only true; TX/RX/motor ages about6-15ms in
+  both supplied samples; reverse enabled. Does not rule out earlier transients.
+- Added separate release/jc4880-v1.3.8-rc2-diag1-2026-09-28 diagnostic Lisp,
+  README, exact RC2 diff, manifest and initial/final test evidence. Canonical
+  lisp/main.lisp and immutable RC2 package remain SHA256 bab5a803...acc6d.
+- Diagnostic source SHA256175b96028c6c95d15967c3085fe5ec234c87a23cce34f5bd4e76f8427b257c62.
+  Records first captured guard1..6 and heartbeat ages after fault/zero-current.
+  Tiny numeric atomic capture, no diagnostic I/O; unchanged100ms thresholds,
+  native ADC guard, fault latch and PARK/mode refusal. Ages are capture-time.
+- Test worker added opt-in --fault-diagnostics in scripts/test_lisp_runtime.py
+  and nine cases_fault_*.lisp fixtures. Original default27 checks preserved.
+- Checks: actual official6.05 LispBM32-bit, heap2464, 98/98 PASS, exit0; mocked
+  ESC APIs. Primary verified complete log, counts, source hash, runner syntax.
+  Independent reviewer found no blocker in production diff or repaired tests.
+- Initial stale-worker fixtures failed because spawn-trap mail wakes blocked
+  parent before sleep expires (upstream eval_cps.c1384-1405). Fixed test elapsed
+  waits, not production timeout; final all-pass log and initial failure retained.
+- Status: diagnostic package ready; original hardware cause remains unconfirmed.
+- Handoff: upload only diag1 Lisp to ESC with existing RC2 P4, wait for dash,
+  read diag-first/fault/state/time/ages as README. Note whether fault preceded
+  REPL, since Tool briefly pauses evaluator. No auto-clear/bypass, P4 rebuild,
+  flash, config write, commit, push or Drive upload performed in this step.
+
+### 2026-09-28 - Codex - Investigate fault12 persisting with correct ADC type
+- New hardware feedback: tuple now (0 12 1 5 t), user says correct settings
+  still fail. Do not keep attributing this observation to native type8.
+- Read-only audit: fault12 merges transient ADC range, stale TX, enabled/healthy
+  RX becoming stale, and stale motor heartbeat. All watchdog thresholds100ms.
+  motor-live/tx-live are one-way flags, not proof workers are currently alive.
+- Official6.05: ADC range uses filtered voltage before output-disabled branch;
+  an earlier out-of-range sample is not excluded by current range=t. Time APIs
+  use matching RTOS ticks; no time-unit mismatch found. spawn-trap can suppress
+  normal error printing and RC2 does not retain child CIDs/trapped-exit reasons.
+- Checks: four inline branch-evaluator scenarios on packaged RC2 passed:
+  healthy=(0,0,1,0,true); ADC transient/recovered, TX stale/recovered, and RX
+  stale/recovered each reproduce (0,12,1,5,true). Explicit mock clock/APIs;
+  this establishes ambiguity of the tuple, not a hardware timing root cause.
+- Asked for two read-only native-input/worker-age snapshots about1s apart.
+  REPL in official6.05 briefly pauses evaluator, so a single timing outlier is
+  not proof of a dead worker. UART and GPIO share pins in ADC_UART; no evidence
+  yet this overlap causes fault12. No production/release changes or hardware writes.
+- Handoff: hardware root cause still pending; do not bypass fault or lengthen
+  watchdog based only on this tuple. Existing host runtime fixtures do not
+  establish actual ADC startup or GPIO/thread timing.
+
+### 2026-09-28 - Codex - Hardware feedback isolates native ADC configuration conflict
+- User reports P4 gear '-' after selecting Off in VESC Tool. Read-only REPL
+  expression (list (conf-get 'adc-ctrl-type) safety-fault motor-live
+  (ride-safety-state) (app-adc-range-ok)) returned (8 12 1 5 t).
+- Interpretation: runtime ADC type8, latched INPUT_FAULT12, motor-live1,
+  safety FAULT5, current ADC range check true. Type8 alone violates RC2's
+  native-input-only guard and is sufficient to block mode/PARK exit.
+- Source verified: official6.05 datatypes.h enumerates NONE=0 and
+  CURRENT_NOREV_BRAKE_ADC=8; conf-get reads appconf->app_adc_conf.ctrl_type
+  directly (lispif_vesc_extensions.c). Do not remap type8 to NONE or bypass fault.
+- Handoff: user must verify the write/readback on the same local ESC, including
+  adc-ctrl-type=0 before and after a restart. Off shown in Tool is not proof of
+  applied/persisted config. Write omission, wrong target, or reapplication is
+  not yet distinguished. No hardware write, code change, build or release edit.
+
+### 2026-09-28 - Codex - Check real RC2 ride-state behavior against preview
+- Scope: read-only trace of packaged Lisp and P4 safety/gear/UI paths; mapper
+  independently checked P4 display and request feedback. No production edits.
+- Verification: reran test_lisp_runtime.py with --vesc-version 6.05,
+  --heap-cells 2464 and --source release/jc4880-v1.3.8-rc2-2026-09-28/main.lisp:
+  27/27 checks passed; official VM with mocked ESC APIs, not hardware execution.
+- Findings: boot selects M1 in PARK; selecting modes in PARK keeps propulsion
+  locked. Physical TX short release exits PARK, subsequent presses cycle modes;
+  long press requires stopped/idle/brake to enter PARK. Native ADC conflict
+  latches drive fault and blocks modes. P4 badge uses confirmed safety state,
+  becomes '-' for stale/fault/interlock. Preview buttons bypass these guards.
+- UI limitation: 'Mode request sent' confirms enqueue only; SELECT rejection
+  does not get a dedicated reason message. Current UI does not wire the
+  safety set-park API for exit; drawer Park action only requests entry.
+- Handoff: hardware feedback remains pending; no config writes or motor action.
+
+### 2026-09-28 - Codex - Rebuild and open visible Windows UI simulator
+- Scope: user requested the interactive UI simulation. Preserved all source
+  and release contents; read-only mapper checked supported simulator controls.
+- Build: mingw32-make -r -j4 default SHELL=C:/Windows/System32/cmd.exe passed
+  in Super_VESC_Display/lvgl-simulator. Initial normal make spent time in
+  implicit-rule search; stopped only the verified owned make PID. An attempt
+  using inherited sh failed on the Windows mkdir rule; explicit cmd fixed it.
+- Launch: simulator.exe --gear-preview, SDL_VIDEODRIVER=windows, normal visible
+  window in the unrestricted environment. PID32308; Computer Use screenshot
+  confirmed rendered UI and the P/1/2/3/R/Wait/Stale overlay.
+- Interaction: native automation refused input because the user was actively
+  operating the window; left it open for user control. No automated click
+  sequence is claimed as completed.
+- Limit: gear preview injects display state only. Desktop drawer remains a
+  static placeholder without the device edge-swipe hook; this window cannot
+  demonstrate the RC2 hardware drawer-release fix. No new hardware validation.
+
+### 2026-09-28 - Codex - Upload RC2 customer hardware-test package to Google Drive
+- Scope: user requested uploading the existing RC2 folder and allowing customer
+  access by link. Uploaded all 28 files unchanged, preserving test-results.
+- Drive: https://drive.google.com/drive/folders/1ygo74D9NKNlF7VfEYbf34iU7YdvJBZmG
+  Child test-results ID: 1g3If_9JYl0jyHznmfjyGglrROhRhfiKL.
+- Checks: remote listings match all 28 local names and byte sizes; all files
+  shared and downloadable. Folder permission readback: anyone/reader,
+  allowFileDiscovery=false. Signed-out browser opens folder and lists files.
+  Local SHA256SUMS rechecked: 27/27 entries match, no release edits.
+- Status: uploaded and link sharing enabled. No customer message sent, no
+  deletion, firmware rebuild, flash, commit or push. Existing dirty work kept.
+- Handoff: customer hardware evaluation remains pending; host test success
+  does not establish the actual hardware M-TEMP root cause or resolution.
+
+### 2026-09-28 - Codex - Rerun every previously failing RC2 case for hardware handoff
+- Scope: user requested another run of failed cases before hardware use. No
+  production/test/release edits or new firmware build; no flash, ports, ESC
+  writes or motor actuation. Prior shared changes preserved.
+- Identity: before/after execution all59 source-manifest files matched RC2;
+  all27 release checksum entries verified. Lisp tests explicitly use packaged
+  release/main.lisp. Only this handoff log/report was added after verification.
+- Checks rerun: CAN22/22, telemetry16/16, thermalUI9/9, drawerLVGL9/9, Lisp
+  branch17/17, actualVM6.05 heap2464=27/27, VM7.00=27/27; conversion6.05=603,
+  ride safety2532, ride transport53, gear81 and target lifecycle all pass.
+  Compared stored baseline failures against new PASS lines:34 historical
+  failed cases covered (12CAN+7decoder+4thermalUI+6drawer+3branch+2VM), zero
+  unresolved test failures. This counts test cases, not distinct defects.
+- Image: re-inspected packaged OTA with esptool, version1.3.8-rc2,
+  4479264bytes, P4/16MB/DIO80MHz/rev1.0-1.99, checksum/hash valid. Firmware,
+  merged image, Lisp, source overlay and release manifest remain unchanged.
+- Files: docs/RC2_RERUN_2026-09-28.md and new UTF8 evidence/command/exit/timing
+  logs in docs/diagnostics/rc2-rerun-2026-09-28; no old evidence overwritten.
+  Read-only agents reviewed runner coverage; coordinator executed compiler
+  suites because reviewer roles prohibit builds/artifact writes.
+- Status: host rerun passed; same RC2 ready for user hardware evaluation.
+  Actual hardware M-TEMP cause, ADC wiring/config and bus/touch timing remain
+  unverified. Use packaged TEST_CASES HW rows; native ADC Current conflict
+  intentionally keeps safety latch and must not be bypassed to claim success.
+
+### 2026-09-28 - Codex - Fix reproduced CAN/thermal defects and build JC4880 RC2
+- User authorized fixing all reproduced defects and rebuilding after confirming
+  VESC6.05. Preserved previous shared changes, root Lisp and RC1 package. No
+  flash, motor actuation, ESC config writes, commit or push.
+- Production: comm_can.c/header add source-referenced contiguous fragment
+  coverage, length/DLC guards, RTR rejection and callback-scoped sender ID.
+  vesc_rt_data.c/header validate full legacy47/selective51 before commit,
+  reject empty/unknown-only masks and track FET/motor age independently.
+  CAN RT polls request bit17; acceptance requires payload motorID=target plus
+  envelope sender matching target or verified official dual-motor base alias
+  (sender+1)%255. main/main.c uses the CAN entry API; other-node BLE forwarding
+  remains intact. updater/realtime_viewer apply independent thermal age.
+  Dashboard holds stale thermal display; viewer marks unavailable. Trip-log
+  lifecycle/persistence is retained, with existing latest-snapshot semantics.
+- Version:1.3.8-rc2. Canonical Lisp byte-identical toRC1, including its fault
+  reporting fix; motor/PARK/native-output interlocks unchanged. Native ADC
+  Current configuration rejection is intentional safety behavior, not bypassed.
+- Tests/tools: extended M-TEMP transport/UI/telemetry suites and target polling;
+  Lisp runtime supports official6.05/7.00, verified firmware loader/macros/API
+  names and configurable heap. All source downloads pinned and blob checked.
+- Final checks: transport22/22 (baseline78356d7=10/22); thermal UI9/9
+  (baseline7c77f2b=5/9); telemetry16/16 (baseline7c77f2b=9/16). Baseline malformed
+  DLC crashed only the isolated host child; fixed version passes. Tests cover
+  LONG1024byte payload, wrong identity, dual-motor/base-ID254-to0 wrap, missing
+  identity, missing/duplicate/out-of-order fragments, all legacy0..69 prefixes,
+  independent temperature ages and trip logging continuing during stale temp.
+  Drawer actual LVGL9/9; Lisp branch17/17; actual LispBM6.05 and7.00 each27/27;
+  6.05 additionally27/27 at firmware2464-cell heap/18KiB/GC160. Conversion6.05
+  603/603, ride safety2532, ride transport53, gear81, target lifecycle pass.
+- Independent review caught sender-versus-logical-motor incompatibility and a
+  proposed thermal gate that would stop trip/battery persistence. Both corrected
+  before final build; reviewer reports no remaining blocker. Inherited shared
+  RT snapshot/retarget concurrency and real bus behavior remain unverified.
+- Build: final ESP-IDF5.5.3 JC4880 exit0, LVGL8.3.11,16MB/DIO80MHz, app4479264
+  bytes,763616bytes free in5242880byte OTA slot. esptool validates checksum/hash,
+  version1.3.8-rc2 and silicon1.0-1.99; merged image offset0x0. Initial build was
+  repeated after review fixes. Existing warnings documented, no dependency update.
+- Deliverable: release/jc4880-v1.3.8-rc2-2026-09-28 with OTA/merged images,
+  canonical Lisp, TEST_CASES, manifests/checksums, source overlay and test logs.
+  docs/diagnostics/rc2-2026-09-28 preserves before/after/build evidence.
+- Status: reproduced software defects fixed and host/build checks pass; ready
+  for hardware feedback. M-TEMP video cause still unproven. Need actual board,
+  Sensor Type/ADC Control Type and direct/bridged Tool route with raw thermal
+  ADC measurements; no claim that matching synthetic values proves ESC cause.
+
+### 2026-09-28 - Codex - Apply confirmed VESC 6.05 to M-TEMP investigation
+- User clarification: ESC firmware is6.05, throttle uses normal/default
+  configuration. Board/vendor build, saved Sensor Type/ADC control mode and
+  direct versus P4-bridged Tool route remain unidentified; do not infer them.
+- Files: scripts/test_mtemp_conversion.py now accepts --vesc-version6.05
+  (space before value in command); matching fixture README and deep-trace
+  report updated; added diagnostics/mtemp-2026-09-28/conversion-6.05.txt under
+  docs. No production/Lisp/RC1 changes, build, flash or ESC config writes.
+- Source: six files from official6.05 a0d40e2c5a42c810888d8c379307e6b0a118a125
+  verified against Git blobs and pinned SHA256. Extracted conversion/macros/
+  serializer blocks exactly match7.00. Independent read-only audit checked
+  defaults, read bindings and Lisp restart; cached source remains ignored.
+- Checks: conversion6.05 603/603;7.00 603/603 after runner change. Same
+  hypothetical thermal-input replay, independent throttle does not alter
+  temperature. This is host/source evidence, not ESC hardware acceptance.
+- Findings: generic6.05 SensorType default isNTC10k/beta3380 (#ifndef board
+  overridable); absence of sensor does not select Disabled. Generic app
+  default isUART and ADC controlNONE, not enough to infer user's saved setup.
+  If saved ADC control is nonzero, new Lisp latches fault9 at load, then12
+  through its input-fault loop and blocks mode/PARK exit; conditional mode
+  explanation only, no demonstrated temperature writer. get-temp-mot-res
+  is absent in6.05; do not prescribe that7.00 probe on this firmware.
+- Status:6.05-specific replay complete; actual hardware root cause remains
+  open pending board identity, actual config and raw thermal/input evidence.
+
+### 2026-09-28 - Codex - Deep M-TEMP source trace and controlled reproductions
+- Scope: trace each temperature producer/consumer and reproduce candidate
+  mechanisms after the latest Lisp-triggered/no-sensor/Tool evidence. This
+  investigation adds tests/docs only; no production, RC1, flash, ESC config,
+  motor actuation, commit or push changes.
+- Files: docs/M_TEMP_DEEP_TRACE_2026-09-28.md; scripts/test_mtemp_conversion.py,
+  scripts/test_mtemp_transport.py, scripts/test_mtemp_ui.py and their matching
+  scripts/tests/mtemp_* fixtures; docs/diagnostics/mtemp-2026-09-28 logs.
+  Preserved all previous shared changes. Only primary updated this log.
+- Sources: official VESC 7.00 20cbb362687291242ab90b99f25fbfe8835540fc;
+  478 additional Git-blob-verified source files/provenance in ignored cache.
+  Followed ADC/DMA/mux, sensor config, override, filtering, selected motor,
+  command4/50/47/51, CAN STATUS4, P4 decoding/freshness, theme, units and BLE.
+  Motor selector belongs to each thread; examined Lisp calls do not redirect
+  CAN/USB motor context. Restart resets EXT GPIO/stops loaded C libraries
+  before script execution; need old-to-same-old upload control on real ESC.
+- Checks: pinned-source conversion replay 603 checks/0 failures, including
+  independent ADC32 sweep, exact -100 control and invalid-to-valid recovery.
+  Example VESC6 open-rail input/filter/serialization yields -99 display;
+  deliberately selected thermal ADC values yield 2/1/-17. Hypothetical ADC
+  inputs are NOT measurements or proof of analog coupling on user hardware.
+  UI suite 7/7 includes 5 controls and 2 observed existing weaknesses (thermal
+  freshness on unrelated fields and truncated legacy47); not seven fixes.
+  CAN transport current/e7f0b16/7c77f2b each 5/9, expected exit1 for four
+  contracts: wrong sender accepted, missing unchanged tail refresh, retained
+  tail replay, short STATUS4 DLC. Baseline logs persisted. Retained-tail CRC
+  describes the returned value, so it proves incomplete fragment coverage,
+  not corruption relative to the sender. All four predate latest release.
+- Independent review corrected the retained-tail interpretation and requested
+  positive ADC assertions/exact -100/recovery controls, now added and passing.
+  Report local links checked; logs UTF-8; all 28 RC1 manifest hashes match.
+  Hardware not connected/identified; no hardware acceptance claim.
+- Status: source checklist and host reproductions complete; actual cause of
+  throttle-correlated temperature after Lisp upload remains unproven.
+- Handoff: require ESC model/firmware, Sensor Type, knob pin and direct versus
+  P4-bridged Tool route, then simultaneous raw temperature ADC/filtered temp/
+  throttle/CAN source observations. Official Sensor Type Disabled=8, not0.
+  get-adc3 reads motor1; upstream get-temp-mot-res also selects motor1 for
+  either motor selector, so do not use it as motor2 evidence. Do not zero or
+  hide temperature, or call a transport defense the video root-cause fix.
+
+### 2026-09-27 - Codex - Video regression tests, scoped fixes and JC4880 v1.3.8-rc1
+- Scope: user authorized reproducible UI/Lisp tests, fixes for reproduced bugs,
+  rerun and a named/versioned build for hardware feedback. Prior build gate is
+  superseded. No flash, ESC writes, motor actuation, commit or push performed.
+- Sources: read official VESC 6.05/6.06/7.00 and managed LVGL 8.3.11 before
+  implementation. Video sampled with OpenCV/Pillow: M-TEMP -99/2/1/2/-99 C at
+  roughly 3..10 s while displayed speed/current stay zero; no audio analysis.
+  VESC Tool temperature change remains user-confirmed, its video text blurred.
+- Files: Super_VESC_Display/custom/lisp_panel.c uses LVGL wait-release for the
+  opening gesture and prevents reopen while old close animation owns drawer;
+  lisp/main.lisp reports safety/input fault on polls without changing ACKs or
+  motor/ADC/PARK interlocks; components/vesc_can/vesc_rt_data.c preflights all
+  known selective-mask field lengths before changing state/time. Version bumped
+  to 1.3.8-rc1. Root main.lisp and previous release bytes remain unchanged.
+- Tests: added scripts/test_lisp_panel_ui.py, scripts/test_lisp_runtime.py,
+  scripts/test_vesc_telemetry.py and their scripts/tests fixtures; extended
+  scripts/test_lisp_safety.py. UI production + actual LVGL: 3/9 baseline -> 9/9;
+  branch Lisp: 14/17 -> 17/17; full official 32-bit LispBM 7.00 with ESC API
+  fixtures: 16/18 -> 18/18; compiled production telemetry: 10/14 -> 14/14.
+  Baseline here is release 7c77f2b. Ride safety 2532, transport 53, gear 81
+  checks and target polling pass. All logs packaged, expected baseline exit 1.
+- Independent review: no production blocker; found all-fields telemetry test
+  could false PASS when a valid packet was rejected. Fixed with changed
+  values/time, added all 20 truncated prefixes plus valid recovery, reran both
+  baseline/current. Documentation follow-up corrected the brake prerequisite
+  for entering PARK and explicitly warned root Lisp starts throttle enabled
+  without PARK during A/B. Only primary edits this log; scopes were disjoint.
+- Build: ESP-IDF 5.5.3 reconfigure/build JC4880 exit 0; LVGL 8.3.11; debug UART
+  off, flash16MB/DIO80m, app4478656 bytes fits OTA5242880 (764224 free). Image
+  checksum/hash valid, embedded version1.3.8-rc1. Existing warnings retained.
+  Standard IDF export failed with EIM tool-layout discovery; used installed
+  EIM profile's Python/compiler/CMake/Ninja paths, ESP_IDF_VERSION=5.5. No tool
+  reinstall or environment-related source workaround. main/bench_wifi.h absent.
+- Deliverable: release/jc4880-v1.3.8-rc1-2026-09-27 contains OTA app, merged USB
+  image, canonical Lisp, source overlay, SHA256/manifest, test logs, video
+  samples and TEST_CASES.md. Added docs/M_TEMP_VIDEO_AND_REGRESSION_2026-09-27.md;
+  linked new status from the two earlier source-audit reports without erasing
+  their historical scope.
+- Status: reproduced software defects fixed, host checks/build passed; RC
+  ready for user hardware evaluation. Hardware acceptance remains pending.
+- Handoff: M-TEMP cause still unproven. Valid ADC packets do not alter motor
+  temperature in decoder tests; malformed-packet defense is not proof of video
+  cause. Mode works with old Lisp in healthy VM; new diagnostic reports an
+  underlying fault rather than bypassing it. Need exact ESC/custom firmware,
+  Sensor Type, knob pin, direct/bridged Tool route and runtime fault evidence.
+
+### 2026-09-27 - Codex - Refine Lisp-triggered regression from confirmed symptoms
+- Latest user evidence: uploading new Lisp to ESC triggers the symptoms; no
+  motor temperature sensor is installed; VESC Tool also shows temperature
+  changing with throttle. Drawer opens, then retracts as the finger releases.
+  This supersedes the older failure matrix and no-open description below.
+- Files: updated docs/ROOT_LISP_VS_RELEASE_2026-09-27.md,
+  docs/VESC_REFERENCE_FIRST_AUDIT_2026-09-27.md and this log only. Added three
+  exact upstream motor/mc_interface.c files to ignored provenance cache.
+- Temperature: official 6.05/6.06/7.00 share the same sensor conversion,
+  Disabled override and invalid-reading -100/filter block. No physical sensor
+  does not establish Sensor Type=Disabled. The two Lisp conf-set keys take
+  changed_mc=1, not the full motor-configuration setter; hardware-limit
+  helpers do not write sensor type/temperature override/ADC routing.
+- UI: opening gesture remains pressed; scrim CLICKED closes the drawer.
+  LVGL can retarget an unlocked, non-scrolling touch onto the scrim during
+  opening, then PRESS_LOCK retains it until release. This conditional source
+  path matches the symptom but is not an observed on-device event trace or an
+  explanation of the Lisp-only trigger. Missing descriptor does not close it.
+- Reference correction: release 7c77f2b and current dependencies.lock specify
+  LVGL 8.3.11, matching managed source and local JC4880 compile database;
+  simulator copy is 8.3.10. Local guidance saying 8.4 is stale for this checkout.
+- Checks: source block hashes and setter branches compared across three VESC
+  versions; LVGL input/close references extracted; independent workers reviewed
+  supplied excerpts (their executors were unavailable). Documentation/source
+  identity and whitespace checks performed; no implementation/build/flash,
+  runtime tests, motor actuation, ESC writes, commit or push.
+- Status: source comparison/reference extraction complete. Await ESC model,
+  firmware, actual Sensor Type and Tool connection route; need touch callback
+  trace and Lisp fault state to prove device causes. Keep P4/ESC/config fixed
+  when varying Lisp. Do not hide/zero M-TEMP to mask the regression.
+
+### 2026-09-27 - Codex - Reference-first VESC audit and corrected failure pair
+- User constraint: do not invent/generate an implementation; find and read
+  comparable VESC/custom code, then extract the relevant source before changes.
+- Correction: user now confirms ONLY new P4 plus new packaged Lisp exhibits
+  the swipe/mode-button and throttle-correlated M-TEMP symptoms. This supersedes
+  the older new-P4 plus old-Lisp failure matrix in earlier entries/reports.
+- Files: docs/VESC_REFERENCE_FIRST_AUDIT_2026-09-27.md, correction notice in
+  docs/ROOT_LISP_VS_RELEASE_2026-09-27.md, and this log. Exact upstream sources
+  cached under ignored research/_sources/vesc-official-audit with provenance.
+- References: pinned official bldc release_6_05/6_06/7_00, VESC Tool and vesc_pkg.
+  ADC/SETUP blocks match across all three versions and match P4 decoding;
+  required Lisp bindings exist in all three official snapshots. ADC continues
+  decoding before output-disable gate when its app is running.
+- Findings: PARK alone does not block panel mode selection; safety-fault does.
+  Gesture/drawer source unchanged; separate no-open/Loading/no-selection cases.
+  Safety state may fault while result still reports rm-fault=0; request/reply
+  sizes and CAN reassembly changed interaction, but no hardware cause proven.
+- Checks: exact source downloads/hashes, source block comparisons, reference
+  excerpts, baseline diffs. Worker executors failed; root fetched/read source
+  and workers reviewed supplied excerpts. No implementation/build/flash/tests
+  on ESC, no config writes, no commit/push. Existing docs/log edits preserved.
+- Status: reference extraction complete; deployed ESC identity, actual panel
+  behavior, runtime faults and raw CAN evidence are still needed for diagnosis.
+
+### 2026-09-27 - Codex - Compare root baseline Lisp with latest packaged Lisp
+- Scope: direct root main.lisp versus release comparison, focused on
+  throttle/ADC, P4 data and PARK/mode behavior.
+- Files: added docs/ROOT_LISP_VS_RELEASE_2026-09-27.md; this log only.
+  Firmware, Lisp, release artifacts and earlier diagnostic source preserved.
+- Findings: root equals e7f0b16 after CRLF/LF normalization; packaged Lisp
+  equals 7c77f2b after normalization and matches canonical/Drive/ZIP bytes.
+  Throttle math, DASH/config-v2/legacy-status and EEPROM remain unchanged.
+  New ADC NONE requirement, PARK, latched faults and sequenced status/safety
+  explain specific control/protocol differences; no ADC-to-temperature map.
+- Checks: SHA256, Git blobs, ZIP Lisp member, direct diff, 110/147-form parses
+  and function-structure comparison; three independent read-only agents.
+  No firmware build, flash, LispBM or hardware tests.
+- Status: static comparison complete; working baseline is prior user-reported
+  acceptance, not new hardware proof.
+- Handoff: report includes source locations and runtime limits. The reported
+  new-P4 plus old-Lisp failure remains relevant; M-TEMP/Settings cause unproven.
+
+
 ### 2026-09-27 - Codex - Checkpoint pending P4 work and publish local branches
 - Scope: user requested checking commits and pushing all branches from this
   repository to origin. Preserve and checkpoint the accumulated shared changes,

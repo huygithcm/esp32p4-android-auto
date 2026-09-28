@@ -1,0 +1,60 @@
+{
+  "version": "1.3.8-rc2-diag2",
+  "date": "2026-09-28",
+  "kind": "lisp-rx-startup-fix-with-diagnostics",
+  "p4": "existing JC4880 RC2 unchanged",
+  "vesc": "6.05",
+  "host_checks": {
+    "diag2": 127,
+    "canonical": 56,
+    "canonical_branch": 17
+  },
+  "hardware_feedback": "PARK with no recorded fault; RX readiness and driving operations pending",
+  "files": [
+    {
+      "path": "main.lisp",
+      "bytes": 50368,
+      "sha256": "5fd3f81d06429da0525bd912221de0c5ae129541f80631c27e308df8fc969c95"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3299,
+      "sha256": "82187c687f883c9632c76ef515656d57dee7ab4b248b434db94ab1315d89f964"
+    },
+    {
+      "path": "RX_STARTUP_FIX.diff",
+      "bytes": 2188,
+      "sha256": "b3805995d7b965d7f494deb6da4ae8231b606b78a5b731335173e0de194cfa51"
+    },
+    {
+      "path": "test-results/ROOT_CAUSE.md",
+      "bytes": 1800,
+      "sha256": "83308eb1f460ac1cb9cb009c88c55a8cf41d544063c425809bcfce99f065c3f3"
+    },
+    {
+      "path": "test-results/rx-startup-baseline-605-v2.txt",
+      "bytes": 11612,
+      "sha256": "7196d442ca147c242c0d727f1a00c3342718a94a579563da9823cf3a9282de2a"
+    },
+    {
+      "path": "test-results/rx-startup-canonical-605.txt",
+      "bytes": 11438,
+      "sha256": "f556c7f59274824973de6cd74e6f09f08811937aaeeb29e8452ab447703d476a"
+    },
+    {
+      "path": "test-results/rx-startup-fixed-605.txt",
+      "bytes": 23588,
+      "sha256": "5a512d575e5b02c1a5f702bf65a0ce53ebd29902ed99b70e4fe1bcf495ce27fc"
+    },
+    {
+      "path": "test-results/rx-startup-fixture-clock-timeout.txt",
+      "bytes": 9482,
+      "sha256": "e7bf00fc90c6ceb7b607725f54a0199f1d040cd26d0297283bcaee51d28a8e55"
+    },
+    {
+      "path": "test-results/VERIFICATION.md",
+      "bytes": 1819,
+      "sha256": "e4928077c8a303198ced3248d0578bc4a7a5e2a7657bf23eaf3f65713d486031"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+COMMAND: C:\Users\huybu\AppData\Local\Programs\Python\Python312\python.exe -B scripts/test_target_polling.py --cc C:/msys64/mingw32/bin/gcc.exe
+PASS target changes preserve active/paused RT, Lisp and IO polling
+PASS target changes preserve active/paused RT, Lisp and IO polling
+
+STDERR:
+
+EXIT: 0
+DURATION_SECONDS: 0.641

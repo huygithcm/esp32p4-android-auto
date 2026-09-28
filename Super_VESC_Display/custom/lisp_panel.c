@@ -378,9 +378,25 @@ static void poll_cb(lv_timer_t *t)
 
 static void do_open(void)
 {
-    if (s_open) return;
+    /* The closing animation still owns s_drawer and its teardown callback.
+     * Reopening before it finishes would replace the pointers it deletes. */
+    if (s_open || s_drawer) return;
     /* Dashboard-only: never open over Settings / config menu / editor / AA. */
     if (lv_scr_act() != vesc_ui_get_screen()) return;
+
+    /* Consume the edge swipe through release before creating its tap targets.
+     * Otherwise LVGL can retarget the held press onto the new scrim and close
+     * the panel on release. This also protects controls under the finger.
+     * Opening is asynchronous, so there is no active indev here. Use LVGL's
+     * wait-release mechanism on pointer devices for this display instead. */
+    lv_disp_t *disp = lv_obj_get_disp(vesc_ui_get_screen());
+    for (lv_indev_t *indev = lv_indev_get_next(NULL); indev;
+         indev = lv_indev_get_next(indev)) {
+        if (lv_indev_get_type(indev) == LV_INDEV_TYPE_POINTER &&
+            indev->driver->disp == disp) {
+            lv_indev_wait_release(indev);
+        }
+    }
 
     /* Scrim (behind) — semi-transparent, catches taps outside the drawer. */
     s_scrim = lv_obj_create(lv_layer_top());

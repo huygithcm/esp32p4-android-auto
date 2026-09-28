@@ -1,0 +1,6 @@
+(sleep 0.2)
+(test-check (= diag-first 0) "native runtime case starts healthy")
+(setq host-adc-type 8)
+(sleep 0.05)
+(setq host-adc-type 0)
+(def host-expected-cause 2)

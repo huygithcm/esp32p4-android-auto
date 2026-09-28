@@ -1,0 +1,50 @@
+--- rc2-diag1/main.lisp
++++ rc2-diag2/main.lisp
+@@ -16,7 +16,7 @@
+ (def throttle-on 0)
+ (def park-on 1)
+ (def safety-fault 0)
+-; RC2 diag1: volatile first RECORDED guard; unchanged 100 ms thresholds.
++; RC2 diag2: volatile first RECORDED guard; unchanged 100 ms thresholds.
+ (def diag-first 0)
+ (def diag-at 0)
+ (def diag-tx-age 0.0)
+@@ -104,8 +104,8 @@
+ ; Safe start, the reverse twin of `armed`: a button shorted to GND since boot
+ ; must not arm reverse. Nothing happens until it has been seen released once.
+ (def rv-seen-release 0)
+-; Set by the monitor thread only after gpio-configure has returned. If RX
+-; cannot be configured or read, the thread dies there and this stays 0, which
++; Set only after the first successful RX read and heartbeat publication. If RX
++; cannot be configured or initially read, this stays 0, which
+ ; is what makes reverse report UNSUPPORTED_HARDWARE rather than pretending.
+ (def rv-hw-ok 0)
+ ; @const-start flashes every definition below, freeing the cons heap. Without it
+@@ -846,11 +846,10 @@
+ ;
+ ; The pin is still configured HERE rather than at load time, and this thread is
+ ; still spawned with spawn-trap, so a GPIO failure kills this thread alone,
+-; leaves rv-hw-ok at 0, and reverse reports UNSUPPORTED_HARDWARE while forward
+-; riding carries on untouched.
++; leaves rv-hw-ok at 0 on initial failure, so reverse remains unsupported.
++; Failure after a successful read is caught by the existing heartbeat watchdog.
+ (defun monitor-reverse () {
+     (gpio-configure 'pin-rx 'pin-mode-in-pu)
+-    (setq rv-hw-ok 1)
+     (loopwhile t {
+         ; Active-low: the button shorts the pin to ESC ground.
+         (let ((raw (if (= (gpio-read 'pin-rx) 0) 1 0))) {
+@@ -866,7 +865,12 @@
+                 (if (= rv-btn-raw 0) (setq rv-seen-release 1))
+             })
+         })
+-        (setq rv-seen (systime))
++        ; Publish readiness only with a successful sample and its heartbeat.
++        ; Otherwise the motor can treat the initial timestamp 0 as stale.
++        (atomic {
++            (setq rv-seen (systime))
++            (setq rv-hw-ok 1)
++        })
+         (sleep 0.01)
+     })
+ })

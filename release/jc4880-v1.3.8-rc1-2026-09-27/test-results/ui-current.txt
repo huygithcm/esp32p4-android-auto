@@ -1,0 +1,11 @@
+Compiling managed LVGL and Super_VESC_Display/custom/lisp_panel.c (working tree)
+PASS opening_release_outside
+PASS opening_release_inside
+PASS next_outside_tap
+PASS mode_and_park_actions
+PASS missing_descriptor
+PASS late_descriptor
+PASS dashboard_only
+PASS screen_change
+PASS reopen_during_close
+LVGL device drawer: 9/9 PASS

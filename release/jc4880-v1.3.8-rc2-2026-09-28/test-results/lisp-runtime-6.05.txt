@@ -1,0 +1,44 @@
+Bindings audit: 18 fixture APIs present in official firmware a0d40e2c5a42c810888d8c379307e6b0a118a125
+Unchanged 6.05 macro block SHA256: d7a92d53d21873b39148a76d4d9c3e8fe16c5914be4170b67ba86c67c673726b
+Upstream LispBM: VESC 6.05; bldc a0d40e2c5a42c810888d8c379307e6b0a118a125; 32-bit host; source C:\esp32p4-android-auto\lisp\main.lisp; SHA256 bab5a803c38ca6b61b0b44d41d80a9b3df0c51ad870aa70c7f07e118d55acc6d
+SCENARIO ADC NONE / UI / PARK / range failure
+"ride config: no eeprom block, using defaults"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "motor worker survives real VM startup"
+PASS "TX worker survives real VM startup"
+PASS "RX worker survives real VM startup"
+PASS "healthy ADC NONE reaches no input fault"
+PASS "native-input-only executes actual trap/match"
+PASS "supported min-speed trap succeeds"
+"ride SET: min-speed failed: unsupported"
+PASS "unsupported min-speed is contained by trap"
+PASS "real panel event thread returns Park plus three modes"
+"Mode 2: 70.000000f32 A req, 70.000000f32 A effective"
+PASS "PARK permits mode 2 through real panel event and STATE reply"
+"Mode 3: 100.000000f32 A req, 70.000000f32 A effective"
+PASS "PARK permits mode 3 through real panel event"
+PASS "PARK suppresses held throttle with running motor worker"
+PASS "idle healthy worker can exit PARK"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "real TX monitor cycles mode on debounced release"
+PASS "ADC range failure latches PARK and zero output"
+PASS "fault refuses mode selection"
+PASS "fault safety poll carries INPUT_FAULT instead of OK"
+PASS "fault sequenced status carries INPUT_FAULT instead of OK"
+PASS "recovered ADC does not silently clear latched drive fault"
+CONTEXT 564 finished: t
+18 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO native ADC Current at boot
+"ride config: no eeprom block, using defaults"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "native Current conflict does not kill workers"
+PASS "native Current reaches latched INPUT_FAULT and zero propulsion"
+PASS "native Current blocks UI mode change"
+PASS "native Current blocks hardware mode button"
+PASS "native Current blocks PARK exit"
+PASS "native Current fault suppresses held throttle"
+PASS "native Current safety poll reports INPUT_FAULT"
+PASS "native Current mode status reports INPUT_FAULT"
+PASS "changing config back to NONE does not silently clear drive fault"
+CONTEXT 564 finished: t
+9 actual LispBM checks; PASSED; ESC APIs are host fixtures

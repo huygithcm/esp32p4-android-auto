@@ -1,0 +1,81 @@
+Compiling production RT/IO decoders and buffer.c at 7c77f2b
+PASS video_temperature_values
+PASS adc_does_not_change_temperature
+PASS selective_motor_only
+PASS full_setup_layout
+PASS truncated_adc
+PASS selective_mixed_fields
+PASS unknown_trailing_field
+PASS legacy_optional_tail
+FAIL line 212: vesc_rt_data_get_latest()->rx_time == before
+FAIL line 213: !vesc_rt_data_is_fresh()
+FAIL truncated_selective_no_refresh
+FAIL line 224: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL truncated_selective_atomic
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+FAIL line 256: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL line 257: vesc_rt_data_get_latest()->rx_time == before.rx_time
+FAIL line 258: !vesc_rt_data_is_fresh()
+Rejected-prefix contract failed at 5/20 bytes
+Rejected-prefix contract failed at 6/20 bytes
+Rejected-prefix contract failed at 7/20 bytes
+Rejected-prefix contract failed at 8/20 bytes
+Rejected-prefix contract failed at 9/20 bytes
+Rejected-prefix contract failed at 10/20 bytes
+Rejected-prefix contract failed at 11/20 bytes
+Rejected-prefix contract failed at 12/20 bytes
+Rejected-prefix contract failed at 13/20 bytes
+Rejected-prefix contract failed at 14/20 bytes
+Rejected-prefix contract failed at 15/20 bytes
+Rejected-prefix contract failed at 16/20 bytes
+Rejected-prefix contract failed at 17/20 bytes
+Rejected-prefix contract failed at 18/20 bytes
+Rejected-prefix contract failed at 19/20 bytes
+FAIL all_selective_prefixes_and_recovery
+FAIL line 236: memcmp(&before, vesc_rt_data_get_latest(), sizeof(before)) == 0
+FAIL truncated_current_no_field_shift
+PASS short_header
+PASS other_commands
+VESC telemetry: 10/14 PASS
+Failed: truncated_selective_no_refresh, truncated_selective_atomic, all_selective_prefixes_and_recovery, truncated_current_no_field_shift

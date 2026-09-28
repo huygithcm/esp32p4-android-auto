@@ -139,10 +139,15 @@ static void push_rt_locked(void)
      * resets into a running offset. */
     update_trip(trip_persist_get_trip_km());
     update_range(compute_range_km());
-    update_temp_fet(rt->temp_mos);
-    update_temp_motor(rt->temp_motor);
+    /* Partial SETUP replies can keep current/voltage fresh while thermal
+     * fields age out. Preserve the last displayed temperature until that
+     * sensor receives a new sample; do not present old data as refreshed. */
+    if (vesc_rt_data_temp_mos_is_fresh()) {
+        update_temp_fet(rt->temp_mos);
+        update_battery_temp(rt->temp_mos);
+    }
+    if (vesc_rt_data_temp_motor_is_fresh()) update_temp_motor(rt->temp_motor);
     update_amp_hours(trip_persist_get_amp_hours());
-    update_battery_temp(rt->temp_mos);
     update_battery_voltage(rt->v_in);
     update_odometer(vesc_rt_data_get_odometer_km());
     update_uptime(trip_persist_get_uptime_ms());

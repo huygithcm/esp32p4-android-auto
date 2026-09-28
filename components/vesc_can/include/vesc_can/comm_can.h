@@ -83,6 +83,12 @@ can_status_msg_6 *comm_can_get_status_msg_6_id(int id);
 typedef void (*can_packet_handler_t)(const uint8_t *data, unsigned int len);
 void comm_can_set_packet_handler(can_packet_handler_t handler);
 
+/* Sender embedded in PROCESS_*_BUFFER. Only valid from inside the synchronous
+ * packet handler on the CAN process task; returns -1 outside that callback.
+ * Lets local telemetry enforce its configured source while bridge consumers
+ * still receive replies from every node. Do not use from another task. */
+int comm_can_get_packet_sender_id(void);
+
 /* Identity answered to a COMM_FW_VERSION request arriving over CAN.
  *
  * VESC Tool's CAN scan pings the bus, then asks every node that answered for
