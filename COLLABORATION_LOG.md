@@ -42,6 +42,10 @@ present from work performed in the current session.
   canonical source passed 85/85; safety passed 17/17; managed LVGL drawer
   passed 9/9. Diff whitespace and package hashes checked. ESC APIs remain host
   fixtures and do not prove FOC/PWM, LED or motor behavior on hardware.
+- Publication: implementation/package commit `e44be16` was pushed to
+  `origin/fix/gear-circle-park-reverse`. The complete diag3 folder was uploaded
+  under the existing customer Drive folder; metadata confirms inherited
+  `anyone`/`reader` access with link discovery disabled.
 - Status: software/package complete. Hardware acceptance remains: Mode 2,
   hold R plus brake for at least 0.3 s, keep R held, release brake with zero
   throttle for at least 1 s, confirm VESC Tool leaves brake state, then apply
