@@ -27,6 +27,45 @@ present from work performed in the current session.
 - Log material edits and verification before handing work to another actor.
 
 ## Entries
+### 2026-09-29 21:05 +07:00 - Codex - Fix latched brake command during reverse handoff
+- Scope: fix the VESC 6.05 `CURRENT_BRAKE` to reverse-current transition after
+  the user arms R with the brake and then releases the lever.
+- Files: updated `lisp/main.lisp`, the LispBM ESC fixture and reverse-brake
+  cases; packaged the diagnostic continuation in
+  `release/jc4880-v1.3.8-rc2-diag3-2026-09-29/` with manifest, SHA256 list,
+  exact patch and current test logs. The packaged Lisp intentionally retains
+  diag2 first-fault instrumentation while adding only the reverse brake fix.
+- Change: wait for `brk-rel <= 0.001` before `REVERSE_ACTIVE`, issue
+  `set-current 0` when the brake ramp reaches zero, and use the optional 0.2 s
+  current-off delay only while nonzero reverse torque is requested.
+- Checks: packaged diag3 on pinned VESC 6.05 LispBM at heap 2464 passed 156/156;
+  canonical source passed 85/85; safety passed 17/17; managed LVGL drawer
+  passed 9/9. Diff whitespace and package hashes checked. ESC APIs remain host
+  fixtures and do not prove FOC/PWM, LED or motor behavior on hardware.
+- Status: software/package complete. Hardware acceptance remains: Mode 2,
+  hold R plus brake for at least 0.3 s, keep R held, release brake with zero
+  throttle for at least 1 s, confirm VESC Tool leaves brake state, then apply
+  only very light reverse throttle with the driven wheel safely raised.
+
+### 2026-09-29 20:58 +07:00 - Codex - Compare current Mode R fault with pre-ride-mode release
+- Scope: read-only source/history audit of the reported brake state after the
+  lever is released while R remains held; no production/test/release source was
+  edited by this audit.
+- Baseline: tag v1.3.7 (`fe754d3`, release commit `11c0ba9`) is the last release
+  before commit `3bf38cf` added the editable ride-mode/reverse backend. Its brake
+  ADC, threshold, ramp and `set-brake-rel` path match diag2, but it has no Mode R.
+- Findings: the persistent symptom is specific to the later R path: diag2 can
+  announce R before `brk-rel` drains, then repeatedly refreshes
+  `(set-current 0 0.2)` at zero throttle. Existing uncommitted diag3 work waits
+  for `brk-rel <= 0.001`, replaces terminal brake-zero with `set-current 0`, and
+  omits off-delay at zero reverse current.
+- Checks: reran the full diag3 VESC 6.05 LispBM host suite at heap 2464 with
+  fault, RX-startup, reverse-flow and reverse-brake cases: 156/156 PASS, exit 0.
+  The ESC APIs remain fixtures; PWM, LED, torque and hardware release still need
+  validation on the user's VESC 6.05.
+- Status: audit complete; diag3 and its source/test changes remain uncommitted
+  pre-existing work and were not claimed or modified here.
+
 ### 2026-09-28 - Codex - Authorized local checkpoint; reverse hardware issue open
 - User explicitly requests commit of current branch and confirms modes work
   except R. Latest reproduction: squeeze brake, hold R, release brake; R

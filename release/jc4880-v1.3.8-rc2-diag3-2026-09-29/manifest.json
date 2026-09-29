@@ -1,0 +1,55 @@
+{
+    "version":  "1.3.8-rc2-diag3",
+    "date":  "2026-09-29",
+    "kind":  "lisp-reverse-brake-release-fix-with-diagnostics",
+    "base":  "jc4880-v1.3.8-rc2-diag2-2026-09-28",
+    "p4":  "existing JC4880 RC2 unchanged",
+    "vesc":  {
+                 "version":  "6.05",
+                 "reference_commit":  "a0d40e2c5a42c810888d8c379307e6b0a118a125"
+             },
+    "fix":  [
+                "wait for brk-rel \u003c= 0.001 before REVERSE_ACTIVE",
+                "replace terminal CURRENT_BRAKE with set-current 0",
+                "use current_off_delay 0.2 only for nonzero reverse torque"
+            ],
+    "host_checks":  {
+                        "packaged_lispbm_vesc_605_heap_2464":  156,
+                        "canonical_lispbm_vesc_605_heap_2464":  85,
+                        "safety_source_branch":  17,
+                        "ui_drawer_lvgl":  9
+                    },
+    "hardware_status":  "awaiting validation on the user VESC 6.05; host ESC APIs are fixtures",
+    "files":  [
+                  {
+                      "path":  "main.lisp",
+                      "bytes":  51298,
+                      "sha256":  "abe4f31df446b4fdd8d25810195c1ca58a925cabcece21381fd570b2ed7a75a6"
+                  },
+                  {
+                      "path":  "README.md",
+                      "bytes":  3315,
+                      "sha256":  "af445d6bca35d72485d162695c8ffed35c228ff6689b49e8b600c710d6eb9d54"
+                  },
+                  {
+                      "path":  "RX_BRAKE_RELEASE_FIX.diff",
+                      "bytes":  1827,
+                      "sha256":  "650b9762849a6a662ba4d9f5828d43567319ac684a9931abb51ecad10377e244"
+                  },
+                  {
+                      "path":  "test-results/runtime-605.txt",
+                      "bytes":  15073,
+                      "sha256":  "53742df47d6266042bf89394c6d9a842ec80af242e0575a257069fb710fef865"
+                  },
+                  {
+                      "path":  "test-results/safety.txt",
+                      "bytes":  1284,
+                      "sha256":  "0919e0e1c2350791cf8e4efa8dce968a2693a01eef798715654fc9334ab19c05"
+                  },
+                  {
+                      "path":  "test-results/ui-drawer.txt",
+                      "bytes":  336,
+                      "sha256":  "2c7b289bf98415cb484306a3adda49d363c5c045486952c24f1b576347573d9f"
+                  }
+              ]
+}

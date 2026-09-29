@@ -1,0 +1,275 @@
+Bindings audit: 18 fixture APIs present in official firmware a0d40e2c5a42c810888d8c379307e6b0a118a125
+Unchanged 6.05 macro block SHA256: d7a92d53d21873b39148a76d4d9c3e8fe16c5914be4170b67ba86c67c673726b
+Upstream LispBM: VESC 6.05; bldc a0d40e2c5a42c810888d8c379307e6b0a118a125; 32-bit host; source release\jc4880-v1.3.8-rc2-diag3-2026-09-29\main.lisp; SHA256 abe4f31df446b4fdd8d25810195c1ca58a925cabcece21381fd570b2ed7a75a6
+Host heap: 2464 cons cells; auxiliary memory 18 KiB; GC stack 160; ESC APIs/test code add host overhead
+Verified official 6.05 lispif.c resource definitions:
+#define HEAP_SIZE					(2048 + 256 + 160)
+#define LISP_MEM_SIZE				LBM_MEMORY_SIZE_18K
+#define GC_STACK_SIZE				160
+SCENARIO ADC NONE / UI / PARK / range failure
+"ride config: no eeprom block, using defaults"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "motor worker survives real VM startup"
+PASS "TX worker survives real VM startup"
+PASS "RX worker survives real VM startup"
+PASS "healthy ADC NONE reaches no input fault"
+PASS "native-input-only executes actual trap/match"
+PASS "supported min-speed trap succeeds"
+"ride SET: min-speed failed: unsupported"
+PASS "unsupported min-speed is contained by trap"
+PASS "real panel event thread returns Park plus three modes"
+"Mode 2: 70.000000f32 A req, 70.000000f32 A effective"
+PASS "PARK permits mode 2 through real panel event and STATE reply"
+"Mode 3: 100.000000f32 A req, 70.000000f32 A effective"
+PASS "PARK permits mode 3 through real panel event"
+PASS "PARK suppresses held throttle with running motor worker"
+PASS "idle healthy worker can exit PARK"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "real TX monitor cycles mode on debounced release"
+PASS "ADC range failure latches PARK and zero output"
+PASS "fault refuses mode selection"
+PASS "fault safety poll carries INPUT_FAULT instead of OK"
+PASS "fault sequenced status carries INPUT_FAULT instead of OK"
+PASS "recovered ADC does not silently clear latched drive fault"
+CONTEXT 564 finished: t
+18 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO native ADC Current at boot
+"ride config: no eeprom block, using defaults"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "native Current conflict does not kill workers"
+PASS "native Current reaches latched INPUT_FAULT and zero propulsion"
+PASS "native Current blocks UI mode change"
+PASS "native Current blocks hardware mode button"
+PASS "native Current blocks PARK exit"
+PASS "native Current fault suppresses held throttle"
+PASS "native Current safety poll reports INPUT_FAULT"
+PASS "native Current mode status reports INPUT_FAULT"
+PASS "changing config back to NONE does not silently clear drive fault"
+CONTEXT 564 finished: t
+9 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO diagnostic healthy
+"ride config: no eeprom block, using defaults"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "diagnostic healthy workers remain live"
+PASS "healthy startup leaves diagnostic fields empty"
+PASS "diagnostics preserve healthy PARK exit"
+PASS "healthy running state does not invent a fault"
+CONTEXT 564 finished: t
+4 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO diagnostic native ADC at boot
+"ride config: no eeprom block, using defaults"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "captures the first recorded guard cause"
+PASS "diagnostics preserve fault12 PARK zero-output and FAULT state"
+PASS "diagnostic fault still refuses PARK exit"
+PASS "diagnostic fault still refuses UI mode change"
+PASS "first-fault time and ages form a valid snapshot"
+PASS "first cause survives a later different fault"
+PASS "first-fault timestamp and worker ages remain immutable"
+PASS "recovered inputs and held throttle cannot clear diagnostic fault"
+CONTEXT 564 finished: t
+8 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO diagnostic native ADC changed at runtime
+"ride config: no eeprom block, using defaults"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "native runtime case starts healthy"
+PASS "captures the first recorded guard cause"
+PASS "diagnostics preserve fault12 PARK zero-output and FAULT state"
+PASS "diagnostic fault still refuses PARK exit"
+PASS "diagnostic fault still refuses UI mode change"
+PASS "first-fault time and ages form a valid snapshot"
+PASS "first cause survives a later different fault"
+PASS "first-fault timestamp and worker ages remain immutable"
+PASS "recovered inputs and held throttle cannot clear diagnostic fault"
+CONTEXT 564 finished: t
+9 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO diagnostic transient ADC range
+"ride config: no eeprom block, using defaults"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "ADC transient case starts healthy"
+PASS "captures the first recorded guard cause"
+PASS "diagnostics preserve fault12 PARK zero-output and FAULT state"
+PASS "diagnostic fault still refuses PARK exit"
+PASS "diagnostic fault still refuses UI mode change"
+PASS "first-fault time and ages form a valid snapshot"
+PASS "first cause survives a later different fault"
+PASS "first-fault timestamp and worker ages remain immutable"
+PASS "recovered inputs and held throttle cannot clear diagnostic fault"
+CONTEXT 564 finished: t
+9 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO diagnostic TX worker failure
+"ride config: no eeprom block, using defaults"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "TX failure case starts healthy"
+CONTEXT 3493 finished: injected-tx-failure
+PASS "TX fault snapshot exceeds unchanged watchdog limit"
+PASS "captures the first recorded guard cause"
+PASS "diagnostics preserve fault12 PARK zero-output and FAULT state"
+PASS "diagnostic fault still refuses PARK exit"
+PASS "diagnostic fault still refuses UI mode change"
+PASS "first-fault time and ages form a valid snapshot"
+PASS "first cause survives a later different fault"
+PASS "first-fault timestamp and worker ages remain immutable"
+PASS "recovered inputs and held throttle cannot clear diagnostic fault"
+CONTEXT 564 finished: t
+10 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO diagnostic RX worker failure
+"ride config: no eeprom block, using defaults"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "RX failure case starts healthy"
+CONTEXT 3677 finished: injected-rx-failure
+PASS "RX fault snapshot exceeds unchanged watchdog limit"
+PASS "captures the first recorded guard cause"
+PASS "diagnostics preserve fault12 PARK zero-output and FAULT state"
+PASS "diagnostic fault still refuses PARK exit"
+PASS "diagnostic fault still refuses UI mode change"
+PASS "first-fault time and ages form a valid snapshot"
+PASS "first cause survives a later different fault"
+PASS "first-fault timestamp and worker ages remain immutable"
+PASS "recovered inputs and held throttle cannot clear diagnostic fault"
+CONTEXT 564 finished: t
+10 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO diagnostic motor worker failure
+"ride config: no eeprom block, using defaults"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "motor failure case starts healthy"
+CONTEXT 3059 finished: injected-motor-failure
+PASS "motor snapshot exceeds unchanged supervisor limit"
+PASS "captures the first recorded guard cause"
+PASS "diagnostics preserve fault12 PARK zero-output and FAULT state"
+PASS "diagnostic fault still refuses PARK exit"
+PASS "diagnostic fault still refuses UI mode change"
+PASS "first-fault time and ages form a valid snapshot"
+PASS "first cause survives a later different fault"
+PASS "first-fault timestamp and worker ages remain immutable"
+PASS "recovered inputs and held throttle cannot clear diagnostic fault"
+CONTEXT 564 finished: t
+10 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO diagnostic competing writers
+"ride config: no eeprom block, using defaults"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "competing writers case starts healthy"
+CONTEXT 4011 finished: 1
+CONTEXT 3869 finished: 2
+PASS "both competing diagnostic writers complete"
+PASS "exactly one competing cause wins"
+PASS "captures the first recorded guard cause"
+PASS "diagnostics preserve fault12 PARK zero-output and FAULT state"
+PASS "diagnostic fault still refuses PARK exit"
+PASS "diagnostic fault still refuses UI mode change"
+PASS "first-fault time and ages form a valid snapshot"
+PASS "first cause survives a later different fault"
+PASS "first-fault timestamp and worker ages remain immutable"
+PASS "recovered inputs and held throttle cannot clear diagnostic fault"
+CONTEXT 564 finished: t
+11 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO RX delayed first read at nonzero uptime
+PASS "fixture starts at nonzero uptime beyond watchdog threshold"
+"ride config: loaded from eeprom"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "RX startup fixture loads enabled reverse from EEPROM"
+PASS "RX configured while first input sample remains pending"
+(0 0 0 0 0.000000f32 0.000000f32 0.000000f32)
+PASS "RX readiness remains false before first completed read"
+PASS "uninitialized RX does not falsely trip the first motor iteration"
+PASS "pending RX startup leaves healthy forward PARK exit available"
+PASS "holding brake and unread RX cannot arm reverse"
+PASS "first successful RX sample publishes readiness with fresh heartbeat"
+PASS "RX startup completion leaves no sticky false fault"
+PASS "button held from startup still needs release before reverse can arm"
+PASS "first debounced release is recognized without arming reverse"
+PASS "subsequent press and deliberate brake hold can authorize reverse"
+CONTEXT 564 finished: t
+12 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO RX failed first read remains unsupported
+PASS "fixture starts at nonzero uptime beyond watchdog threshold"
+"ride config: loaded from eeprom"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+CONTEXT 3731 finished: injected-rx-read-failure
+PASS "failed first read never supplies an RX sample"
+PASS "failed first RX read stays unsupported rather than falsely ready"
+PASS "unsupported RX does not kill forward mode with a stale-zero fault"
+PASS "unsupported RX preserves healthy forward PARK exit"
+PASS "failed RX startup never arms reverse"
+CONTEXT 564 finished: t
+6 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO RX initialized then stale still faults
+PASS "fixture starts at nonzero uptime beyond watchdog threshold"
+"ride config: loaded from eeprom"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "RX stale scenario first completes real monitor reads"
+PASS "RX stale scenario is healthy before injecting worker failure"
+CONTEXT 3731 finished: injected-rx-read-failure
+PASS "initialized RX later stalls and still trips unchanged 100ms watchdog"
+PASS "real post-startup RX loss still latches PARK and zero output"
+PASS "real RX loss still refuses PARK exit"
+CONTEXT 564 finished: t
+6 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO RX reverse disabled startup
+PASS "fixture starts at nonzero uptime beyond watchdog threshold"
+"ride config: loaded from eeprom"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "reverse-disabled fixture loads saved reverse setting"
+PASS "reverse-disabled startup remains healthy with pending RX read"
+PASS "disabled reverse cannot publish readiness or arm before its first sample"
+PASS "disabled reverse stays unarmed after healthy RX initialization"
+CONTEXT 564 finished: t
+5 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO reverse Mode2 input gates and negative current
+"ride config: loaded from eeprom"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+"Mode 2: 70.000000f32 A req, 70.000000f32 A effective"
+PASS "Mode2 selected with healthy released RX input"
+PASS "reverse config sends 3kmh magnitude in m/s to official min-speed API"
+PASS "PARK rejects reverse arming despite held RX and brake"
+PASS "healthy Mode2 exits PARK after releasing RX"
+PASS "hardware symptom: brake1 plus RX button0 stays forward Mode2"
+PASS "disabled reverse remains forward despite RX press and brake"
+PASS "RX press without decoded brake enters INTERLOCK rather than staying Mode2"
+PASS "moving vehicle cannot newly arm reverse"
+PASS "stopped idle throttle plus held RX and brake arms reverse"
+PASS "releasing brake with RX held enters active reverse"
+PASS "actual motor loop commands bounded negative amps with optional off-delay"
+(reverse-output -2.800000f32 0.200000f32 -1 1)
+PASS "fault during reverse clears authorization and commands zero"
+CONTEXT 564 finished: t
+12 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO reverse held button at boot
+"ride config: loaded from eeprom"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "RX held from boot has no observed release"
+PASS "held-at-boot RX remains forward and cannot arm with brake"
+CONTEXT 564 finished: t
+2 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO reverse unavailable RX hardware
+"ride config: loaded from eeprom"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+CONTEXT 3664 finished: unsupported-rx
+PASS "unavailable RX hardware remains forward and cannot authorize reverse"
+CONTEXT 564 finished: t
+1 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO reverse brake priority and release
+"ride config: loaded from eeprom"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "brake scenario exits healthy PARK"
+PASS "armed reverse still commands braking while decoded brake is held"
+PASS "persistent brake ADC1 overrides throttle without creating reverse current"
+PASS "brake release initially retains its configured decay ramp"
+PASS "after brake ramp decays held throttle commands reverse current"
+PASS "reapplying brake replaces drive command and decays reverse ramp"
+PASS "sustained brake removes residual reverse ramp"
+PASS "release with throttle zero commands zero despite retained reverse authorization"
+PASS "subsequent reverse command follows current throttle rather than old ramp"
+PASS "brake transitions keep all workers healthy"
+CONTEXT 564 finished: t
+10 actual LispBM checks; PASSED; ESC APIs are host fixtures
+SCENARIO reverse maximum brake release ramp
+"ride config: loaded from eeprom"
+"Mode 1: 50.000000f32 A req, 50.000000f32 A effective"
+PASS "maximum ramp scenario exits healthy PARK"
+PASS "maximum ramp begins with armed reverse and full brake"
+PASS "5s setting intentionally keeps brake active briefly after release"
+PASS "maximum supported brake ramp eventually hands control to reverse current"
+(maximum-ramp-release 0.000006f32 absolute -0.980000f32 host-elapsed-after-initial-200ms 7.745882f32)
+CONTEXT 564 finished: t
+4 actual LispBM checks; PASSED; ESC APIs are host fixtures

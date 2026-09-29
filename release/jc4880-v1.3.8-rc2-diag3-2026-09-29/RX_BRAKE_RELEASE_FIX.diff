@@ -1,0 +1,31 @@
+diff --git "a/release\\jc4880-v1.3.8-rc2-diag2-2026-09-28\\main.lisp" "b/release\\jc4880-v1.3.8-rc2-diag3-2026-09-29\\main.lisp"
+index 49db0b4..c781f64 100644
+--- "a/release\\jc4880-v1.3.8-rc2-diag2-2026-09-28\\main.lisp"
++++ "b/release\\jc4880-v1.3.8-rc2-diag3-2026-09-29\\main.lisp"
+@@ -771 +771,7 @@
+-    (set-current (* (- 0.0 rv-rel) (reverse-limit)) 0.2)
++    (let ((cmd (* (- 0.0 rv-rel) (reverse-limit))))
++        ; The optional 0.2 is a FOC modulation-off delay, not a command timeout.
++        ; Refresh it only while reverse torque is actually requested. Repeating
++        ; (set-current 0 0.2) at 100 Hz leaves the power stage active forever.
++        (if (> (abs cmd) 0.001)
++            (set-current cmd 0.2)
++            (set-current 0)))
+@@ -800 +806,4 @@
+-                    (if (<= brk 0.05) (setq rv-dir -1))
++                    ; Raw brake release starts the configured decay ramp. Do not
++                    ; announce ACTIVE until the last brake command has drained.
++                    (if (and (<= brk 0.05) (<= brk-rel 0.001))
++                        (setq rv-dir -1))
+@@ -822 +831,2 @@
+-                    (if (and (= rv-armed 1) (< brk 0.05))
++                    (if (and (= rv-armed 1) (< brk 0.05)
++                             (<= brk-rel 0.001))
+@@ -938 +948,6 @@
+-                    (brake-out brake) })      ; full range, never profile-scaled
++                    (brake-out brake)         ; full range, never profile-scaled
++                    ; set-brake-rel 0 still selects CURRENT_BRAKE in VESC 6.05.
++                    ; Replace it immediately once the ramp has reached zero so a
++                    ; scheduler/REPL pause cannot leave brake mode as last command.
++                    (if (and (<= brake 0.05) (<= brk-rel 0.001))
++                        (set-current 0)) })

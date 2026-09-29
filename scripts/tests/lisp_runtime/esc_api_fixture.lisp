@@ -45,12 +45,14 @@
 ; API command only: delay is not a watchdog and no motor is simulated here.
 (defun set-current (value) {
     (if (> (length (rest-args)) 1) (exit-error 'invalid-current-arity))
+    (setq host-current-delay nil)
     (if (rest-args) (setq host-current-delay (rest-args 0)))
     (setq host-current-kind 'absolute)
     (setq host-current value)
 })
 (defun set-current-rel (value) {
     (if (> (length (rest-args)) 1) (exit-error 'invalid-current-arity))
+    (setq host-current-delay nil)
     (if (rest-args) (setq host-current-delay (rest-args 0)))
     (setq host-current-kind 'relative)
     (setq host-current value)
