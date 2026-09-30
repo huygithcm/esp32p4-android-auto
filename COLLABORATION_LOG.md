@@ -27,6 +27,21 @@ present from work performed in the current session.
 - Log material edits and verification before handing work to another actor.
 
 ## Entries
+
+### 2026-09-30 - Codex - Consolidate P4 test evidence
+- Scope: user requested one Markdown summary of completed P4 test cases,
+  committed and pushed on fix/gear-circle-park-reverse.
+- Files: added docs/P4_TEST_CASES_SUMMARY.md and this entry only.
+- Evidence: reconciled RC2 rerun logs, diag3/diag4 results and manifests,
+  hardware checkpoint, temperature/reverse diagnostics and historical log.
+  An independent read-only agent cross-checked archived counts and boundaries.
+- Checks: Markdown evidence links and Git whitespace checked; no new build,
+  host test, simulator session, flash or hardware test was performed.
+- Status: documentation complete; host/simulator/build PASS is explicitly
+  distinguished from pending hardware acceptance, especially Mode R.
+- Handoff: commit only this report and this log entry. Preserve all pre-existing
+  source/font/simulator edits and the local mode-badge log entry. Publish to
+  origin without rebasing or including unrelated uncommitted changes.
 ### 2026-09-30 21:45 +07:00 - Codex - Expand reverse current and enlarge mode display
 - Scope: let Mode R use the same `1..999 A` requested-current range as Modes
   1/2/3 while retaining the live ESC clamp; enlarge and reposition the main
