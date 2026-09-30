@@ -42,8 +42,10 @@ extern "C" {
 
 #define VESC_RIDE_REVERSE_SPEED_MIN_DKMH       10u    /*  1.0 km/h */
 #define VESC_RIDE_REVERSE_SPEED_MAX_DKMH       50u    /*  5.0 km/h */
-#define VESC_RIDE_REVERSE_CURRENT_MIN_DA       10u    /*  1.0 A */
-#define VESC_RIDE_REVERSE_CURRENT_MAX_DA      140u    /* 14.0 A */
+/* Reverse uses the same requested-current entry range as Modes 1..3. The
+ * motor command is still clamped by the live ESC current limits in Lisp. */
+#define VESC_RIDE_REVERSE_CURRENT_MIN_DA VESC_RIDE_CURRENT_MIN_DA
+#define VESC_RIDE_REVERSE_CURRENT_MAX_DA VESC_RIDE_CURRENT_MAX_DA
 
 typedef enum {
     VESC_RIDE_RESULT_OK = 0,

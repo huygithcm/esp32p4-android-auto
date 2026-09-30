@@ -89,7 +89,7 @@ static inline void dash_set_text_color(lv_obj_t *obj, lv_color_t c, lv_style_sel
 #define DASH_MODE_REVERSE 0xFFu
 #define DASH_MODE_PARK    0xFEu
 #define DASH_MODE_UNKNOWN 0xFDu
-#define DASH_GEAR_DIAMETER 40
+#define DASH_GEAR_DIAMETER 80
 
 static inline uint32_t dashboard_gear_color(uint8_t mode)
 {

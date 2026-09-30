@@ -43,6 +43,8 @@ SCALARS = [
     ("ah_text",         "Ah_text"),
     ("uptime_text",     "uptime_text"),
     ("mode_text",       "mode_text"),
+    ("mode_card",       "mode_card"),
+    ("mode_caption",    "mode_lbl"),
     ("time_label",      "cur_time_label"),
     ("power_value",     "power_value"),
     ("max_power_text",  "max_power_text"),

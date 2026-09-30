@@ -1,0 +1,18 @@
+﻿[valid config packet]
+[short packets, every length]
+[bad format version]
+[unknown message id is not ours]
+[refusal still carries the live config]
+[valid status packet]
+[status enums are bounded]
+[range check accepts the defaults]
+[range check rejects each field]
+[modes are independent, decreasing is legal]
+[a mode above the ESC is storable]
+[reverse limits apply while disabled]
+[null config is refused, not dereferenced]
+
+PASSED (0 failures)
+Ride safety: 2532 checks, 0 failures
+Ride transport: 53 checks, 0 failures; sends while locked=0
+Ride gear: 81 checks PASS

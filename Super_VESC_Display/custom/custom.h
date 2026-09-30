@@ -79,6 +79,10 @@ void show_pas_settings(void);
  * and reverse limits locally, then sends one atomic Save to the VESC/Lisp
  * backend. Defined in custom/ride_mode_screen.c. */
 void show_ride_mode_settings(void);
+#ifndef LV_REALDEVICE
+/* Simulator regression for migrated 0.5 A reverse values and whole-amp steps. */
+bool ride_mode_editor_self_test(void);
+#endif
 
 void update_current(float current);
 void update_speed(float speed);

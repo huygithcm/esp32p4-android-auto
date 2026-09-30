@@ -1,0 +1,114 @@
+{
+  "version": "1.3.8-rc2-diag4",
+  "date": "2026-09-30",
+  "board": "jc4880",
+  "target": "esp32p4",
+  "vesc": {
+    "firmware": "6.05",
+    "lisp_file": "main.lisp"
+  },
+  "changes": [
+    "reverse requested current range matches modes 1..3 at 1..999 A",
+    "reverse command remains clamped by both live ESC current limits",
+    "dashboard mode badge is 80 px with Montserrat 48 and collision-checked per-theme placement",
+    "migrated half-amp reverse values display truthfully and snap to whole amps on edit"
+  ],
+  "build": {
+    "status": "pass",
+    "ota_bytes": 4436416,
+    "ota_slot_bytes": 5242880,
+    "ota_free_bytes": 806464,
+    "merged_bytes": 4567488,
+    "image_checksum": "valid",
+    "image_validation_hash": "valid"
+  },
+  "host_checks": {
+    "lisp_safety": "17/17",
+    "lispbm_vesc_605_heap_2464": "88/88",
+    "ride_mode_parser": "pass",
+    "ride_safety": "2532/2532",
+    "ride_transport": "53/53",
+    "ride_gear": "81/81",
+    "ui_drawer": "9/9",
+    "gear_simulator_themes": "4/4",
+    "ride_editor_migration": "pass"
+  },
+  "hardware_status": "awaiting validation on the user JC4880 and VESC 6.05; host ESC APIs are fixtures",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 186,
+      "sha256": "94fa06b0ffcbd27e5a8845c2f3d53c44d51eeda031fd7f48b80714d82efb10ff"
+    },
+    {
+      "path": "esp32p4-jc4880-v1.3.8-rc2-diag4-ota.bin",
+      "bytes": 4436416,
+      "sha256": "f2efb82870fd4d69cf11d4506dfe7825b4bbae3b0a17360eb2608c282a3cfb4d"
+    },
+    {
+      "path": "main.lisp",
+      "bytes": 49425,
+      "sha256": "66e5651cb10acbbb7e8681f40e207309845937498b29eb393a01098074cb9550"
+    },
+    {
+      "path": "merged.bin",
+      "bytes": 4567488,
+      "sha256": "750750e12e2a769f264e528ce6f39596f79aa765fdfaee244686588a057656bf"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3582,
+      "sha256": "873aa8adfedf13b147eed70b20e1da73187705d5e6c1140bb9a703ade34fc505"
+    },
+    {
+      "path": "S3_PORT_HANDOFF.md",
+      "bytes": 6051,
+      "sha256": "ec7ce18a5ccae93ad0756a486b71d268c08045a6efc26545c5c204cf0a287968"
+    },
+    {
+      "path": "TEST_CASES.md",
+      "bytes": 3976,
+      "sha256": "0c029241943c524383f004cded920cc72b3266144978bccec088a1467d077321"
+    },
+    {
+      "path": "test-results/build.txt",
+      "bytes": 534,
+      "sha256": "adb73e5837b9e78d4b5fb0a6f01dbb2592bf03bccbda263f43e8892dbb4b7b3b"
+    },
+    {
+      "path": "test-results/c-host-tests.txt",
+      "bytes": 571,
+      "sha256": "4179eb2558f8dad52419535f45c7c276ff02cbdc9e7cb5771f6428aae9bb57e6"
+    },
+    {
+      "path": "test-results/gear-simulator.txt",
+      "bytes": 720,
+      "sha256": "83c9601e1d109d6c3dadcc9194e3538eee3b81a1f8b8682adf3bd785c1e4d36a"
+    },
+    {
+      "path": "test-results/image-info.txt",
+      "bytes": 1554,
+      "sha256": "a1b25fd293b070eee850b261bd8b21b1e288ce9519ab7cab18f43ae52d52155a"
+    },
+    {
+      "path": "test-results/lisp-safety.txt",
+      "bytes": 2570,
+      "sha256": "319065fc61429775fc6e8dcbfe2fd4306b7fd0ca3db2e00ba996ae23596539fd"
+    },
+    {
+      "path": "test-results/merge.txt",
+      "bytes": 328,
+      "sha256": "7d0d46599c39be12e6ae749617719bae415e61e19b1483643ce1b2da549f90bd"
+    },
+    {
+      "path": "test-results/runtime-605.txt",
+      "bytes": 18408,
+      "sha256": "618cde6c74707a2ded5ea73083bc63c2d52dfc486319ea5cd10513439141821b"
+    },
+    {
+      "path": "test-results/ui-drawer.txt",
+      "bytes": 674,
+      "sha256": "50af8933a45528df209e02f4c2a40fc403453472caea2d7c37fdd5d91650f632"
+    }
+  ]
+}

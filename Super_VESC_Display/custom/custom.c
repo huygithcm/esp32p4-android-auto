@@ -49,9 +49,9 @@ void dashboard_gear_circle_style(lv_obj_t *label, lv_coord_t center_x,
     lv_obj_set_style_border_color(label, lv_color_hex(0x8A9499), LV_PART_MAIN);
     lv_obj_set_style_pad_all(label, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_top(label,
-        (DASH_GEAR_DIAMETER - 4 - lv_font_montserrat_30.line_height) / 2,
+        (DASH_GEAR_DIAMETER - 4 - lv_font_montserrat_48.line_height) / 2,
         LV_PART_MAIN);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_30, LV_PART_MAIN);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_48, LV_PART_MAIN);
     lv_obj_set_style_text_letter_space(label, 0, LV_PART_MAIN);
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_clear_flag(label, LV_OBJ_FLAG_CLICKABLE);
@@ -517,13 +517,14 @@ static void cockpit_screen_init(lv_ui *ui)
 
     /* GUI Guider creates the ride-mode indicator in the top status bar.
      * Override that generated layout here so regeneration cannot undo the
-     * product layout. The speed digits finish around y=284 and the speed
-     * segments start at y=320, leaving this circle directly below the speed.
+     * product layout. The 80 px badge sits left of the speed digits and ends
+     * exactly at the speed-segment row, so the larger text does not cover
+     * speed or min/max readouts.
      * It remains a read-only indicator; drive-mode control stays in the
      * VESC/Lisp input path to avoid accidental touches while riding. */
     if (ui->dashboard_Classic_mode_text) {
         lv_obj_t *mode = ui->dashboard_Classic_mode_text;
-        dashboard_gear_circle_style(mode, 400, 302);
+        dashboard_gear_circle_style(mode, 220, 280);
         lv_obj_set_style_text_color(mode, COCKPIT_ACCENT, LV_PART_MAIN);
         lv_obj_set_style_bg_color(mode, lv_color_hex(0x12181C), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(mode, LV_OPA_COVER, LV_PART_MAIN);

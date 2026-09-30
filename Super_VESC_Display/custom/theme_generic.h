@@ -37,6 +37,9 @@
         <scr>_Ah_text            label   "%.1f Ah"
         <scr>_uptime_text        label   "HH:MM:SS"
         <scr>_mode_text          label   "MODE N"
+        <scr>_mode_card          optional authored mode slot replaced by the
+                                 large circular badge
+        <scr>_mode_lbl           optional caption inside that mode slot
         <scr>_cur_time_label     label   "HH:MM[:SS]"
         <scr>_power_value        label   "%.1f" kW (current*voltage)
         <scr>_max_power_text     label   session peak power, "%.1f KW"
@@ -93,6 +96,8 @@ typedef struct {
     lv_obj_t *ah_text;
     lv_obj_t *uptime_text;
     lv_obj_t *mode_text;
+    lv_obj_t *mode_card;
+    lv_obj_t *mode_caption;
     lv_obj_t *time_label;
     lv_obj_t *power_value;
     lv_obj_t *max_power_text;

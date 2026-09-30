@@ -1,0 +1,17 @@
+BUILD PASS
+Board: jc4880
+Target: esp32p4
+Build directory: build_jc4880
+App version: 1.3.8-rc2-diag4
+OTA binary: esp32p4_android_auto.bin
+OTA bytes: 4436416
+OTA slot bytes: 5242880
+OTA free bytes: 806464 (15%)
+Merged image bytes: 4567488
+Image checksum: valid
+Image validation hash: valid
+
+The board-specific Ninja build completed without errors. Existing compiler
+warnings in Super_VESC_Display/custom/custom.c and lisp_panel.c remain; no new
+build error was reported. This build result is not a hardware flash or runtime
+acceptance.

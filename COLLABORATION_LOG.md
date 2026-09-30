@@ -27,6 +27,32 @@ present from work performed in the current session.
 - Log material edits and verification before handing work to another actor.
 
 ## Entries
+### 2026-09-30 21:45 +07:00 - Codex - Expand reverse current and enlarge mode display
+- Scope: let Mode R use the same `1..999 A` requested-current range as Modes
+  1/2/3 while retaining the live ESC clamp; enlarge and reposition the main
+  dashboard mode badge; prepare a JC4880 diag4 package and S3 port handoff.
+- Files: updated the ride-mode range in
+  `components/vesc_can/include/vesc_can/vesc_ride_mode.h` and `lisp/main.lisp`;
+  updated the settings editor, generic
+  theme widget discovery/layout, LVGL font config and simulator assertions;
+  added `docs/S3_RIDE_MODE_PORT_HANDOFF_2026-09-30.md`; packaged firmware,
+  Lisp, hardware test cases, logs, manifest and hashes in
+  `release/jc4880-v1.3.8-rc2-diag4-2026-09-30/`.
+- Review fixes: Supermoto now replaces and hides its old mode card/caption;
+  Lamborghini uses a clear 80 px slot; migrated `7.5 A` settings display
+  truthfully and snap to `8 A`/`7 A`; the runtime test keeps requested R at
+  `999 A` through the motor state machine and observes the fixture clamp at
+  exactly `-30 A`.
+- Checks: Lisp source/safety 17/17; actual VESC 6.05 LispBM host VM at heap
+  2464 88/88; parser PASS; safety 2532/2532; transport 53/53; gear 81/81;
+  drawer 9/9; simulator migration test plus Cockpit, Classic Max, Lamborghini
+  and Supermoto PASS. JC4880 Ninja build PASS, image checksum/hash valid,
+  4,436,416-byte OTA with 806,464 bytes free. Package manifest/SHA verified.
+- Status: source, tests, build and package complete; publication pending.
+- Handoff: commit and push `fix/gear-circle-park-reverse`; hardware acceptance
+  remains on the user's JC4880 and VESC 6.05. Host fixtures do not prove CAN,
+  PWM, torque, direction, touch or brake release on the vehicle.
+
 ### 2026-09-29 21:05 +07:00 - Codex - Fix latched brake command during reverse handoff
 - Scope: fix the VESC 6.05 `CURRENT_BRAKE` to reverse-current transition after
   the user arms R with the brake and then releases the lever.

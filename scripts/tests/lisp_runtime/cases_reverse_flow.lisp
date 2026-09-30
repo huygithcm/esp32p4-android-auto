@@ -4,6 +4,15 @@
             "Mode2 selected with healthy released RX input")
 (test-check (< (abs (- host-min-speed-value (/ 3.0 3.6))) 0.0001)
             "reverse config sends 3kmh magnitude in m/s to official min-speed API")
+; Reverse current has the same stored/requested range as the three forward
+; modes. The real command remains bounded by both ESC motor-current limits.
+(test-check (rm-values-ok 500 700 1000 1 30 9990)
+            "reverse config accepts the shared 999A requested-current ceiling")
+(test-check (not (rm-values-ok 500 700 1000 1 30 9991))
+            "reverse config rejects values above the shared 999A ceiling")
+(setq rm-rev-cur 9990)
+(test-check (< (abs (- (reverse-limit) 30.0)) 0.0001)
+            "reverse requested current clamps to the ESC negative-current limit")
 ; Firmware min-speed converts magnitude to negative ERPM; this host verifies
 ; the requested value only, never actual speed limiting or physical rotation.
 (setq host-rx 0)
@@ -40,13 +49,14 @@
 (setq host-adc1 0.0)
 ; Wait for the actual brake ramp to decay, then apply throttle.
 (sleep 0.8)
-(setq host-adc0 0.4)
-(sleep 0.3)
+(setq host-adc0 1.0)
+(sleep 1.5)
 (test-check (and (= rv-dir -1) (= rv-armed 1) (= (ride-safety-state) 3))
             "releasing brake with RX held enters active reverse")
-(test-check (and (eq host-current-kind 'absolute) (< host-current 0)
-                 (>= host-current -7.0) (= host-current-delay 0.2))
-            "actual motor loop commands bounded negative amps with optional off-delay")
+(test-check (and (eq host-current-kind 'absolute)
+                 (< (abs (+ host-current 30.0)) 0.001)
+                 (= host-current-delay 0.2))
+            "999A request reaches motor loop clamped to the ESC 30A limit")
 (print (list 'reverse-output host-current host-current-delay rv-dir rv-armed))
 (setq host-range-ok nil)
 (sleep 0.05)

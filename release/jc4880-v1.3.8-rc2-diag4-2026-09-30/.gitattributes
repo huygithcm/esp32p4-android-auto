@@ -1,0 +1,5 @@
+# Preserve release evidence byte-for-byte so SHA256SUMS remains valid after a
+# clone on systems with automatic line-ending conversion enabled.
+* -text
+test-results/* -text
+*.bin binary

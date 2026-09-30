@@ -95,13 +95,37 @@ static lv_obj_t *find_gear_circle(lv_obj_t *root)
 static void gear_render_self_test(void)
 {
     static const char *const expected[] = {"P", "1", "2", "3", "R", "-", "-"};
+    assert(ride_mode_editor_self_test());
+    printf("PASS: ride-mode current editor migration and whole-amp stepping\n");
     for (int theme = 0; theme < dashboard_theme_count(); ++theme) {
     dashboard_theme_set(theme);
     lv_obj_update_layout(dashboard_theme_active_screen());
     lv_obj_t *gear = find_gear_circle(dashboard_theme_active_screen());
     assert(gear);
-    assert(lv_obj_get_style_text_font(gear, LV_PART_MAIN) == &lv_font_montserrat_30);
-    assert(lv_font_montserrat_30.line_height + 4 <= DASH_GEAR_DIAMETER);
+    assert(lv_obj_get_style_text_font(gear, LV_PART_MAIN) == &lv_font_montserrat_48);
+    assert(lv_font_montserrat_48.line_height + 4 <= DASH_GEAR_DIAMETER);
+    assert(lv_obj_get_x(gear) >= 0 && lv_obj_get_y(gear) >= 0);
+    assert(lv_obj_get_x(gear) + lv_obj_get_width(gear) <= 800);
+    assert(lv_obj_get_y(gear) + lv_obj_get_height(gear) <= 480);
+    const dashboard_theme_t *active = dashboard_theme_get(theme);
+    assert(active && active->id);
+    if (strcmp(active->id, "cockpit") == 0 ||
+        strcmp(active->id, "Classic_Max") == 0) {
+        assert(lv_obj_get_x(gear) == 180);
+        assert(lv_obj_get_y(gear) == 240);
+        assert(lv_obj_get_x(gear) + lv_obj_get_width(gear) <= 260);
+        assert(lv_obj_get_y(gear) + lv_obj_get_height(gear) <= 320);
+    } else if (strcmp(active->id, "Lamborghini") == 0) {
+        assert(lv_obj_get_x(gear) == 143);
+        assert(lv_obj_get_y(gear) == 314);
+    } else if (strcmp(active->id, "Supermoto") == 0) {
+        assert(lv_obj_get_x(gear) == 678);
+        assert(lv_obj_get_y(gear) == 359);
+        assert(lv_obj_has_flag(guider_ui.dashboard_Supermoto_mode_card,
+                               LV_OBJ_FLAG_HIDDEN));
+        assert(lv_obj_has_flag(guider_ui.dashboard_Supermoto_mode_lbl,
+                               LV_OBJ_FLAG_HIDDEN));
+    }
     for (unsigned i = 0; i < sizeof(gear_case_values); ++i) {
         update_mode_text(gear_case_values[i]);
         assert(strcmp(lv_label_get_text(gear), expected[i]) == 0);
@@ -116,7 +140,8 @@ static void gear_render_self_test(void)
     update_mode_text(DASH_MODE_REVERSE);
     assert(!lv_obj_has_flag(gear, LV_OBJ_FLAG_HIDDEN));
     assert(strcmp(lv_label_get_text(gear), "R") == 0);
-    printf("PASS: theme %d, 9 gear cases, circle geometry and hide/re-show\n", theme);
+    printf("PASS: theme %d (%s), 9 gear cases, 80px geometry and hide/re-show\n",
+           theme, active->id);
     }
 }
 

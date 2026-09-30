@@ -256,17 +256,23 @@ int main(void)
               "999 A rejected: why=%d", why);
     }
 
-    /* Reverse limits are enforced even when reverse is off: the config is
-     * stored either way, and the day it is switched on is not the day to
-     * discover it holds nonsense. */
+    /* Reverse uses the same requested-current range as the forward modes.
+     * Values above the ESC are legal to store because Lisp clamps them at
+     * command time; the wire validator still rejects values above 999 A. */
     printf("[reverse limits apply while disabled]\n");
     {
         vesc_ride_result_t why = VESC_RIDE_RESULT_OK;
         defaults(&cfg);
         cfg.reverse_enabled    = false;
-        cfg.reverse_current_dA = 200;    /* 20 A, over the 14 A cap */
+        cfg.reverse_current_dA = VESC_RIDE_REVERSE_CURRENT_MAX_DA;
+        CHECK(vesc_ride_mode_config_in_range(&cfg, &why),
+              "999 A reverse rejected while disabled: why=%d", why);
+
+        defaults(&cfg);
+        cfg.reverse_current_dA = VESC_RIDE_REVERSE_CURRENT_MAX_DA + 1;
+        why = VESC_RIDE_RESULT_OK;
         CHECK(!vesc_ride_mode_config_in_range(&cfg, &why),
-              "over-current reverse accepted while disabled");
+              "reverse above 999 A accepted while disabled");
         CHECK(why == VESC_RIDE_RESULT_OUT_OF_RANGE, "why=%d", why);
 
         defaults(&cfg);

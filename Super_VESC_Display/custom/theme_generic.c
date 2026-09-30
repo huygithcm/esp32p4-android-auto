@@ -76,8 +76,29 @@ void dashboard_generic_set_active(const dashboard_widgets_t *w)
         lv_obj_update_layout(w->screen);
         lv_coord_t cx = lv_obj_get_x(w->mode_text) + lv_obj_get_width(w->mode_text) / 2;
         lv_coord_t cy = lv_obj_get_y(w->mode_text) + lv_obj_get_height(w->mode_text) / 2;
-        /* Classic-derived layouts share the same free slot below speed. */
-        if (lv_obj_get_y(w->mode_text) < 40) { cx = 400; cy = 302; }
+        /* Classic-derived layouts share the free slot left of the speed
+         * digits. Supermoto authors a dedicated mode card: replace that card
+         * and its DRIVE caption with the circular badge, using the same slot.
+         * Lamborghini authors mode as text in a 44 px bottom rail, which is
+         * too short for an 80 px circle; its clear slot is between the left
+         * telemetry rail and the speedometer, above the power-flow row. */
+        if (lv_obj_get_y(w->mode_text) < 40) {
+            cx = 220;
+            cy = 280;
+        } else if (w->mode_card) {
+            cx = lv_obj_get_x(w->mode_card) + lv_obj_get_width(w->mode_card) / 2;
+            cy = lv_obj_get_y(w->mode_card) + lv_obj_get_height(w->mode_card) / 2;
+            lv_obj_add_flag(w->mode_card, LV_OBJ_FLAG_HIDDEN);
+            if (w->mode_caption) lv_obj_add_flag(w->mode_caption, LV_OBJ_FLAG_HIDDEN);
+        } else if (lv_obj_get_y(w->mode_text) >= 400) {
+            cx = 183;
+            cy = 354;
+        }
+        const lv_coord_t radius = DASH_GEAR_DIAMETER / 2;
+        if (cx < radius) cx = radius;
+        if (cx > 800 - radius) cx = 800 - radius;
+        if (cy < radius) cy = radius;
+        if (cy > 480 - radius) cy = 480 - radius;
         dashboard_gear_circle_style(w->mode_text, cx, cy);
     }
 

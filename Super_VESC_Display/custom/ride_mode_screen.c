@@ -89,28 +89,62 @@ static void set_defaults(void)
     s_edit.reverse_current_dA = 70;
 }
 
+static void editor_format_value(value_kind_t kind, uint16_t value,
+                                char *text, size_t text_size)
+{
+    switch (kind) {
+    case VALUE_SPEED_DKMH:
+        snprintf(text, text_size, "%u.%u km/h", value / 10u, value % 10u);
+        break;
+    case VALUE_CURRENT_PM:
+        snprintf(text, text_size, "%u%%", value / 10u);
+        break;
+    case VALUE_CURRENT_DA:
+        snprintf(text, text_size, "%u.%u A", value / 10u, value % 10u);
+        break;
+    case VALUE_CURRENT_WHOLE_A:
+        /* Format migrated 0.5 A values truthfully until the first edit snaps
+         * them to the shared whole-amp grid. */
+        if (value % 10u) {
+            snprintf(text, text_size, "%u.%u A", value / 10u, value % 10u);
+        } else {
+            snprintf(text, text_size, "%u A", value / 10u);
+        }
+        break;
+    default:
+        snprintf(text, text_size, "%u", value);
+        break;
+    }
+}
+
+static uint16_t editor_step_value(const value_editor_t *ed, bool increase)
+{
+    uint32_t value = *ed->value;
+    if (ed->kind == VALUE_CURRENT_WHOLE_A) {
+        /* Old Reverse settings used a 0.5 A grid. Move 7.5 A directly to 8 A
+         * on plus or 7 A on minus instead of preserving a hidden 0.5 A. */
+        if (increase) {
+            value = (value / ed->step + 1u) * ed->step;
+        } else if (value > ed->vmin) {
+            value = ((value - 1u) / ed->step) * ed->step;
+        }
+    } else if (increase) {
+        value += ed->step;
+    } else if (value > ed->vmin + ed->step - 1u) {
+        value -= ed->step;
+    } else {
+        value = ed->vmin;
+    }
+    if (value < ed->vmin) value = ed->vmin;
+    if (value > ed->vmax) value = ed->vmax;
+    return (uint16_t)value;
+}
+
 static void editor_refresh(value_editor_t *ed)
 {
     if (!ed || !ed->label || !ed->value) return;
-    uint16_t value = *ed->value;
     char text[32];
-    switch (ed->kind) {
-    case VALUE_SPEED_DKMH:
-        snprintf(text, sizeof(text), "%u.%u km/h", value / 10u, value % 10u);
-        break;
-    case VALUE_CURRENT_PM:
-        snprintf(text, sizeof(text), "%u%%", value / 10u);
-        break;
-    case VALUE_CURRENT_DA:
-        snprintf(text, sizeof(text), "%u.%u A", value / 10u, value % 10u);
-        break;
-    case VALUE_CURRENT_WHOLE_A:
-        snprintf(text, sizeof(text), "%u A", value / 10u);
-        break;
-    default:
-        snprintf(text, sizeof(text), "%u", value);
-        break;
-    }
+    editor_format_value(ed->kind, *ed->value, text, sizeof(text));
     lv_label_set_text(ed->label, text);
 }
 
@@ -137,10 +171,7 @@ static void editor_minus_cb(lv_event_t *e)
 {
     value_editor_t *ed = lv_event_get_user_data(e);
     if (!ed || !ed->value) return;
-    uint16_t value = *ed->value;
-    *ed->value = value > ed->vmin + ed->step - 1u
-                     ? (uint16_t)(value - ed->step)
-                     : ed->vmin;
+    *ed->value = editor_step_value(ed, false);
     editor_refresh(ed);
     mark_dirty();
 }
@@ -149,11 +180,36 @@ static void editor_plus_cb(lv_event_t *e)
 {
     value_editor_t *ed = lv_event_get_user_data(e);
     if (!ed || !ed->value) return;
-    uint32_t value = (uint32_t)*ed->value + ed->step;
-    *ed->value = value < ed->vmax ? (uint16_t)value : ed->vmax;
+    *ed->value = editor_step_value(ed, true);
     editor_refresh(ed);
     mark_dirty();
 }
+
+#ifndef LV_REALDEVICE
+bool ride_mode_editor_self_test(void)
+{
+    uint16_t value = 75;
+    value_editor_t ed = {
+        .value = &value,
+        .vmin = VESC_RIDE_REVERSE_CURRENT_MIN_DA,
+        .vmax = VESC_RIDE_REVERSE_CURRENT_MAX_DA,
+        .step = 10,
+        .kind = VALUE_CURRENT_WHOLE_A,
+    };
+    char text[16];
+    editor_format_value(ed.kind, value, text, sizeof(text));
+    if (strcmp(text, "7.5 A") != 0) return false;
+    if (editor_step_value(&ed, true) != 80) return false;
+    if (editor_step_value(&ed, false) != 70) return false;
+    value = 70;
+    if (editor_step_value(&ed, true) != 80) return false;
+    if (editor_step_value(&ed, false) != 60) return false;
+    value = ed.vmax;
+    if (editor_step_value(&ed, true) != ed.vmax) return false;
+    value = ed.vmin;
+    return editor_step_value(&ed, false) == ed.vmin;
+}
+#endif
 
 static lv_obj_t *make_step_button(lv_obj_t *parent, const char *text,
                                   uint32_t color, lv_event_cb_t cb,
@@ -326,8 +382,8 @@ static void add_reverse_tab(lv_obj_t *tab)
                      VALUE_SPEED_DKMH);
     add_value_editor(tab, "Reverse current", &s_edit.reverse_current_dA,
                      VESC_RIDE_REVERSE_CURRENT_MIN_DA,
-                     VESC_RIDE_REVERSE_CURRENT_MAX_DA, 5,
-                     VALUE_CURRENT_DA);
+                     VESC_RIDE_REVERSE_CURRENT_MAX_DA, 10,
+                     VALUE_CURRENT_WHOLE_A);
 
     section_label(tab, "Physical input");
     s_reverse_button_status = add_readout(tab, "R button");

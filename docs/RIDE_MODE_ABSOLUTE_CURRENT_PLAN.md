@@ -1,6 +1,6 @@
 # Plan doi Ride Modes sang gioi han dong tuyet doi
 
-Status: **de xuat de duyet, chua trien khai**.
+Status: **da trien khai format 2; cap nhat dong reverse ngay 2026-09-30**.
 
 Cap nhat 2026-08-30 theo yeu cau nut cung:
 
@@ -81,8 +81,8 @@ Ke hoach wire:
   phia sau, nhung v2 khong bao gio tra result nay;
 - parser v1 khong duoc doc payload nhu v2.
 
-De xuat range nhap ban dau: `1.0 .. 200.0 A`, step `1 A`; actual van clamp theo
-ESC. Ceiling 200 A can duoc duyet truoc khi code.
+Range nhap cua ca Mode 1/2/3 va Reverse la `1 .. 999 A`, step `1 A`; gia tri
+thuc te van clamp theo ESC. Reverse khong co tran policy 14 A rieng.
 
 ## 3. EEPROM va khoi dong
 
@@ -223,6 +223,8 @@ pin-rx -- nut REVERSE, phai giu trong suot thoi gian lui
 - vao reverse huy PAS;
 - reverse current da la A tuyet doi va clamp theo configured reverse current,
   `abs(l-current-min)` va `l-current-max`.
+- reverse requested current dung cung range `1 .. 999 A` nhu Mode 1/2/3; thay
+  doi nay khong tu nang Motor Current Min/Max tren ESC.
 
 ### Hai lo hong logic can sua
 
