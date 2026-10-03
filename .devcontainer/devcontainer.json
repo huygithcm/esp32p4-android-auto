@@ -1,0 +1,22 @@
+{
+  "name": "ESP32-P4 — ESP-IDF 5.5.3",
+  "build": { "dockerfile": "Dockerfile" },
+  "remoteUser": "vscode",
+  "hostRequirements": { "cpus": 2, "memory": "8gb", "storage": "32gb" },
+  "postCreateCommand": "bash scripts/setup_workspace.sh && bash -lc '. scripts/workspace_env.sh && idf.py --version'",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-vscode.cpptools"],
+      "settings": {
+        "files.autoSave": "afterDelay",
+        "terminal.integrated.profiles.linux": {
+          "ESP-IDF": {
+            "path": "/bin/bash",
+            "args": ["--rcfile", "${workspaceFolder}/.devcontainer/bashrc"]
+          }
+        },
+        "terminal.integrated.defaultProfile.linux": "ESP-IDF"
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+[[ -f "$HOME/.bashrc" ]] && . "$HOME/.bashrc"
+if [[ -f ./scripts/workspace_env.sh ]]; then
+    . ./scripts/workspace_env.sh
+fi
